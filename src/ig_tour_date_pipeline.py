@@ -3,12 +3,14 @@ from ig_scraper import GetInstagramProfile
 from tour_date_csv_utils import classify_images
 from image_to_markdown import csv_to_markdown_with_extracted_data
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 import instaloader
 
 if __name__ == "__main__":
     # Initialize Instaloader and load credentials from environment
-    load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+    dotenv_path = os.getenv("AC_DOTENV_PATH", Path(__file__).resolve().parents[1] / ".env")
+    load_dotenv(dotenv_path)
     loader = instaloader.Instaloader()
     username = os.environ.get("IG_USERNAME")
     password = os.environ.get("IG_PASSWORD")
@@ -49,9 +51,10 @@ if __name__ == "__main__":
     until = "2024-12-31"
 
     # Base folders for outputs
-    base_raw_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw"
-    base_classified_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/classified"
-    base_markdown_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
+    base_dir = Path(os.getenv("AC_DATA_ROOT", Path(__file__).resolve().parents[1]))
+    base_raw_folder = base_dir / "CSV" / "raw"
+    base_classified_folder = base_dir / "CSV" / "classified"
+    base_markdown_folder = base_dir / "TourDateMarkdown"
 
     # Ensure all base folders exist
     os.makedirs(base_raw_folder, exist_ok=True)

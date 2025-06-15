@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+dotenv_path = os.getenv("AC_DOTENV_PATH", Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(dotenv_path)
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
@@ -104,5 +106,6 @@ def process_markdown_folder(folder_path):
                 print("\n" + "="*50 + "\n")
 
 if __name__ == "__main__":
-    folder_path = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CombinedMarkdown"
-    process_markdown_folder(folder_path)
+    base_dir = Path(os.getenv("AC_DATA_ROOT", Path(__file__).resolve().parents[1]))
+    folder_path = base_dir / "CombinedMarkdown"
+    process_markdown_folder(str(folder_path))

@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+dotenv_path = os.getenv("AC_DOTENV_PATH", Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(dotenv_path)
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
@@ -96,7 +98,8 @@ def tour_date_classifier(image_path):
 """
 # Example use
 # Path to folder containing images
-folder_path = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/image"
+base_dir = Path(os.getenv("AC_DATA_ROOT", Path(__file__).resolve().parents[1]))
+folder_path = base_dir / "image"
 
 # Loop through all image files in the folder
 for filename in os.listdir(folder_path):

@@ -8,6 +8,7 @@ from datetime import datetime
 from itertools import dropwhile, takewhile
 import csv
 import time
+from pathlib import Path
 from tqdm import tqdm
 import re
 import os
@@ -157,10 +158,11 @@ if __name__=="__main__":
     #cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01")
 
     ### แบบกำหนด folder ของ output
+    base_dir = Path(os.getenv("AC_DATA_ROOT", Path(__file__).resolve().parents[1]))
     cls.get_post_info_csv(
         username="retrospect_official",
         since="2024-11-01",
         until="2024-12-01",
-        output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw",
+        output_folder=str(base_dir / "CSV" / "raw"),
     )
 """

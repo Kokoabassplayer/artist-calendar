@@ -11,6 +11,9 @@ the following variables in your environment or in a `.env` file:
 
 - `IG_USERNAME` – Instagram username used for authentication
 - `IG_PASSWORD` – password for the Instagram account
+- `AC_DATA_ROOT` – base directory for CSV, image, and markdown files (defaults to the project root if unset)
+- `AC_DOTENV_PATH` – optional path to the `.env` file loaded by the scripts
+- `AC_SAMPLE_CSV` – optional sample CSV file path for `image_to_markdown.py`
 
 These scripts load environment variables using `python-dotenv`, so you
 may create a `.env` file with these keys or export them in your shell.

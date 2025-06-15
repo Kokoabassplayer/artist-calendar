@@ -1,24 +1,27 @@
 import os
+from pathlib import Path
 import glob
 
 def append_to_single_markdown():
     # Specify the directory containing the input markdown files
-    input_directory = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
+
+    base_dir = Path(os.getenv("AC_DATA_ROOT", Path(__file__).resolve().parents[1]))
+    input_directory = base_dir / "TourDateMarkdown"
     
     # Specify the output directory
-    output_directory = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CombinedMarkdown"
+    output_directory = base_dir / "CombinedMarkdown"
 
     # Specify the output file name
     output_file = "combined_tour_dates.md"
 
     # Get all markdown files in the input directory
-    markdown_files = glob.glob(os.path.join(input_directory, '*.md'))
+    markdown_files = glob.glob(str(input_directory / '*.md'))
 
     # Ensure the output directory exists
     os.makedirs(output_directory, exist_ok=True)
 
     # Full path for the output file
-    output_path = os.path.join(output_directory, output_file)
+    output_path = output_directory / output_file
 
     with open(output_path, 'w', encoding='utf-8') as outfile:
         for md_file in markdown_files:

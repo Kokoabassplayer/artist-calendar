@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 from dotenv import load_dotenv
@@ -6,7 +7,11 @@ import google.generativeai as genai
 import requests
 
 # Load environment variables
-load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+dotenv_path = os.getenv("AC_DOTENV_PATH", Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(dotenv_path)
+
+# Base directory for output files
+BASE_DIR = Path(os.getenv("AC_DATA_ROOT", Path(__file__).resolve().parents[1]))
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 if not os.environ.get("GEMINI_API_KEY"):
@@ -129,8 +134,8 @@ def csv_to_markdown_with_extracted_data(csv_file):
     else:
         year_month = "unknown"
 
-    output_markdown_file = f"/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown/{base_name}_{year_month}.md"
-    image_folder = f"/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateImage/{base_name}"
+    output_markdown_file = str(BASE_DIR / "TourDateMarkdown" / f"{base_name}_{year_month}.md")
+    image_folder = str(BASE_DIR / "TourDateImage" / base_name)
 
     print(f"Markdown will be saved to: {output_markdown_file}")
     print(f"Images will be stored in: {image_folder}")
@@ -182,7 +187,7 @@ def csv_to_markdown_with_extracted_data(csv_file):
 """
 # Example usage
 if __name__ == "__main__":
-    csv_file = "/Users/kokoabassplayer/Desktop/python/palmy_classified.csv"  # Input CSV file
+    csv_file = os.getenv("AC_SAMPLE_CSV", str(BASE_DIR / "palmy_classified.csv"))
     csv_to_markdown_with_extracted_data(csv_file)
 """
 
