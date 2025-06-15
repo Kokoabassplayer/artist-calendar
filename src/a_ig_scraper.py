@@ -1,12 +1,13 @@
 import instaloader
 from datetime import datetime
-from itertools import dropwhile, takewhile
+from itertools import takewhile
 import csv
 import time
 from tqdm import tqdm
 import re
 import os
 import random
+
 
 class GetInstagramProfile:
     def __init__(self, loader=None) -> None:
@@ -30,10 +31,26 @@ class GetInstagramProfile:
             writer = csv.writer(file)
             writer.writerow(
                 [
-                    "Type", "ID", "Profile", "Caption", "Date", "Location",
-                    "URL", "TypeName", "MediaCount", "Likes", "Comments",
-                    "Video Views", "Is Video", "Engagement Rate", "Hashtags",
-                    "Mentions", "Tagged Users", "Followers", "Following", "Image URL"
+                    "Type",
+                    "ID",
+                    "Profile",
+                    "Caption",
+                    "Date",
+                    "Location",
+                    "URL",
+                    "TypeName",
+                    "MediaCount",
+                    "Likes",
+                    "Comments",
+                    "Video Views",
+                    "Is Video",
+                    "Engagement Rate",
+                    "Hashtags",
+                    "Mentions",
+                    "Tagged Users",
+                    "Followers",
+                    "Following",
+                    "Image URL",
                 ]
             )
             total_followers = profile.followers
@@ -58,25 +75,54 @@ class GetInstagramProfile:
                         mentions = " ".join(post.caption_mentions)
                         location = post.location.name if post.location else "Unknown"
                         tagged_users = " ".join(
-                            [user.username if hasattr(user, "username") else user for user in post.tagged_users]
+                            [
+                                user.username if hasattr(user, "username") else user
+                                for user in post.tagged_users
+                            ]
                         )
                         writer.writerow(
                             [
-                                "post", post.mediaid, profile.username, caption, post.date, location,
-                                post_url, post.typename, post.mediacount, likes, comments,
-                                video_views, is_video, engagement_rate, hashtags, mentions,
-                                tagged_users, total_followers, total_following, image_url
+                                "post",
+                                post.mediaid,
+                                profile.username,
+                                caption,
+                                post.date,
+                                location,
+                                post_url,
+                                post.typename,
+                                post.mediacount,
+                                likes,
+                                comments,
+                                video_views,
+                                is_video,
+                                engagement_rate,
+                                hashtags,
+                                mentions,
+                                tagged_users,
+                                total_followers,
+                                total_following,
+                                image_url,
                             ]
                         )
                         break  # Break the retry loop on success
                     except Exception as e:
                         retries -= 1
-                        print(f"Error processing post {post.mediaid}: {e}. Retries left: {retries}")
-                        time.sleep(random.uniform(1, 3))  # Random delay before retrying
+                        print(
+                            f"Error processing post {
+                                post.mediaid}: {e}. Retries left: {retries}"
+                        )
+                        # Random delay before retrying
+                        time.sleep(random.uniform(1, 3))
                 else:
-                    print(f"Skipping post {post.mediaid} after multiple failed attempts.")
+                    print(
+                        f"Skipping post {
+                            post.mediaid} after multiple failed attempts."
+                    )
                 time.sleep(random.uniform(1, 3))
-        print(f"Data for {username} from {since} to {until} has been successfully written to {output_file}.")
+        print(
+            f"Data for {username} from {since} to {until} has been successfully written to {output_file}."
+        )
+
 
 if __name__ == "__main__":
     cls = GetInstagramProfile()
@@ -84,5 +130,5 @@ if __name__ == "__main__":
         username="retrospect_official",
         since="2024-11-01",
         until="2024-12-01",
-        output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw"
+        output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw",
     )

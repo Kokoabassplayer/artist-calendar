@@ -2,7 +2,7 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
@@ -10,10 +10,11 @@ if not os.environ.get("GEMINI_API_KEY"):
     print("Error: API key not found.")
     exit()
 
+
 def summarize_markdown(file_path):
     """Summarizes the content of a Markdown file using Gemini."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             content = file.read()
 
         model = genai.GenerativeModel(
@@ -26,26 +27,10 @@ def summarize_markdown(file_path):
             },
         )
 
-        prompt = f"""
-            Analyze the following Markdown content and summarize it in Markdown format. For each **artist** mentioned, include their associated **year(s)** and **month(s)**. Structure the summary as follows:
-
-            ### Summary
-
-            #### Artists with Associated Dates:
-            - **Artist 1**
-            - Year(s): [Year 1], [Year 2]
-            - Month(s): [Month 1], [Month 2]
-
-            - **Artist 2**
-            - Year(s): [Year 1]
-            - Month(s): [Month 1], [Month 2]
-
-            Markdown content:
-            {content}
-           """ 
         test_prompt = f"""
 
-Analyze the following Markdown content and produce a JSON summary suitable for database storage. The JSON should have this structure:
+Analyze the following Markdown content and produce a JSON summary
+suitable for database storage. The JSON should have this structure:
 
 ```json
 {{
@@ -72,14 +57,15 @@ Analyze the following Markdown content and produce a JSON summary suitable for d
 }}
 
 Requirements:
-	•	Include all artists mentioned in the Markdown.
-	•	Parse all events, extracting the year, month, and day.
-	•	The year can be assumed from the content (e.g., 2024 or 2025).
-	•	Use “December” and month_number: 12 if no month name is explicitly stated but implied.
-	•	For each event, if location or city is mentioned, include them.
-	•	If contact information (phone number, email, social handle) is found for an artist, include it in the “contact” field.
-	•	Omit fields if the information is not available.
-	•	Return only valid JSON that follows the given structure.
+    • Include all artists mentioned in the Markdown.
+    • Parse all events, extracting the year, month, and day.
+    • The year can be assumed from the content (e.g., 2024 or 2025).
+    • Use “December” and month_number: 12 if no month name is explicitly stated but implied.
+    • For each event, if location or city is mentioned, include them.
+    • If contact information (phone number, email, social handle) is found for
+      an artist, include it in the “contact” field.
+    • Omit fields if the information is not available.
+    • Return only valid JSON that follows the given structure.
 
 Markdown content:
 {content}
@@ -92,17 +78,21 @@ Markdown content:
         print(f"Error summarizing file {file_path}: {e}")
         return None
 
+
 def process_markdown_folder(folder_path):
     """Processes all Markdown files in the given folder."""
     for filename in os.listdir(folder_path):
-        if filename.endswith('.md'):
+        if filename.endswith(".md"):
             file_path = os.path.join(folder_path, filename)
             print(f"Summarizing {filename}:")
             summary = summarize_markdown(file_path)
             if summary:
                 print(summary)
-                print("\n" + "="*50 + "\n")
+                print("\n" + "=" * 50 + "\n")
+
 
 if __name__ == "__main__":
-    folder_path = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CombinedMarkdown"
+    folder_path = (
+        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CombinedMarkdown"
+    )
     process_markdown_folder(folder_path)
