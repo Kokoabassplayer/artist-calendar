@@ -28,5 +28,6 @@ def append_to_single_markdown():
 
     print(f"All markdown files have been appended to {output_path}")
 
-# You can now call the function without any arguments
-append_to_single_markdown()
+# You can now call the function directly when running this file
+if __name__ == "__main__":
+    append_to_single_markdown()
