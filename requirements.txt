@@ -1,0 +1,7 @@
+instaloader
+pandas
+Pillow
+google-generativeai
+python-dotenv
+tqdm
+requests
