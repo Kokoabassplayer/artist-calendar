@@ -86,45 +86,50 @@ def download_image(image_url, save_path):
         return False
 
 
-def csv_to_markdown_with_extracted_data(csv_file):
-    """
-    Processes a CSV file, downloads images flagged with is_tour_date == 1,
-    extracts data from the images, and generates Markdown content.
+def csv_to_markdown_with_extracted_data(
+    csv_file, output_markdown_file=None, image_folder=None
+):
+    """Convert a classified CSV file into a Markdown file.
 
-    Args:
-        csv_file (str): Path to the CSV file.
+    The function downloads images flagged with ``is_tour_date == 1`` and uses
+    :func:`image_to_markdown` to extract text from those images. The extracted
+    content is written to a Markdown file alongside basic metadata from the CSV.
+
+    Parameters
+    ----------
+    csv_file : str
+        Path to the classified CSV file.
+    output_markdown_file : str, optional
+        Path of the Markdown file to write. If not provided, a file named
+        ``<csv_file_basename>_<YYYY_MM>.md`` will be created in the current
+        directory.
+    image_folder : str, optional
+        Directory used to store downloaded images. If not provided, a folder
+        named ``<csv_file_basename>`` inside ``image_output`` in the current
+        directory will be used.
     """
-    # Generate output paths based on the input CSV file name
     base_name = os.path.splitext(os.path.basename(csv_file))[0]
 
-    # Load the CSV file
     data = pd.read_csv(csv_file)
 
-    # Check required columns
     required_columns = ["Profile", "Image URL", "URL", "is_tour_date", "Date"]
     if not all(col in data.columns for col in required_columns):
         raise ValueError(
             f"The CSV file must contain the following columns: {required_columns}"
         )
 
-    # Filter rows with is_tour_date == 1
     tour_date_images = data[data["is_tour_date"] == 1]
 
-    # Extract year and month from the first valid date
     if not tour_date_images.empty:
         first_date = pd.to_datetime(tour_date_images.iloc[0]["Date"])
         year_month = first_date.strftime("%Y_%m")
     else:
         year_month = "unknown"
 
-    output_markdown_file = os.path.join(
-        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown",
-        f"{base_name}_{year_month}.md",
-    )
-    image_folder = os.path.join(
-        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateImage",
-        base_name,
-    )
+    if output_markdown_file is None:
+        output_markdown_file = f"{base_name}_{year_month}.md"
+    if image_folder is None:
+        image_folder = os.path.join("image_output", base_name)
 
     print(f"Markdown will be saved to: {output_markdown_file}")
     print(f"Images will be stored in: {image_folder}")
