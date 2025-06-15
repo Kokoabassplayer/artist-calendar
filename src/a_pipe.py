@@ -1,5 +1,5 @@
 # Import necessary modules
-from a_ig_scraper_backup import GetInstagramProfile
+from ig_scraper import GetInstagramProfile
 from tour_date_csv_utils import classify_images
 from image_to_markdown import csv_to_markdown_with_extracted_data
 import os
