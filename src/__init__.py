@@ -1,0 +1,1 @@
+"""Artist calendar utilities package."""

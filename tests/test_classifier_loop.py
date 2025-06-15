@@ -1,4 +1,4 @@
-from tour_date_classifier import tour_date_classifier
+from src.tour_date_classifier import tour_date_classifier
 import os
 
 # Example use
