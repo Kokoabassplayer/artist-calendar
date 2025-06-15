@@ -3,11 +3,6 @@
 # อย่าลืม pip3 install instaloader
 # อย่าลืม pip install tqdm
 
-# Originate by https://python.plainenglish.io/scrape-everythings-from-instagram-using-python-39b5a8baf2e5
-# Modified by Nuttapong Buttprom (https://kokoabassplayer.github.io/)
-# อย่าลืม pip3 install instaloader
-# อย่าลืม pip install tqdm
-
 import instaloader
 from datetime import datetime
 from itertools import dropwhile, takewhile
@@ -16,6 +11,7 @@ import time
 from tqdm import tqdm
 import re
 import os
+import random
 
 
 class GetInstagramProfile:
@@ -142,7 +138,8 @@ class GetInstagramProfile:
                         tagged_users, total_followers, total_following, image_url
                     ]
                 )
-                time.sleep(1)
+                # Introduce a random delay between requests to avoid hitting rate limits
+                time.sleep(random.uniform(1, 3))
 
         print(f"Data for {username} from {since} to {until} has been successfully written to {output_file}.")
 
@@ -151,7 +148,7 @@ if __name__=="__main__":
     cls = GetInstagramProfile()
     #cls.download_users_profile_picture("best_gadgets_2030")
     #cls.download_users_posts_with_periods(username="kokoabassplayer_rubikk", since="2023-07-01", until="2023-08-01")
-    #cls.download_hastag_posts("ondemandacademy")
+    #cls.download_hashtag_posts("ondemandacademy")
     #cls.get_users_followers("best_gadgets_2030")
     #cls.get_users_followings("best_gadgets_2030")
     #cls.get_post_comments("laydline")
@@ -160,5 +157,10 @@ if __name__=="__main__":
     #cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01")
 
     ### แบบกำหนด folder ของ output
-    cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01", output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw")
+    cls.get_post_info_csv(
+        username="retrospect_official",
+        since="2024-11-01",
+        until="2024-12-01",
+        output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw",
+    )
 """
