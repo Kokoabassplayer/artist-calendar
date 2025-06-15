@@ -1,12 +1,14 @@
 import os
 import glob
 
+BASE_DATA_DIR = os.environ.get("BASE_DATA_DIR", os.path.join(os.getcwd(), "data"))
+
 def append_to_single_markdown():
     # Specify the directory containing the input markdown files
-    input_directory = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
+    input_directory = os.path.join(BASE_DATA_DIR, "TourDateMarkdown")
     
     # Specify the output directory
-    output_directory = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CombinedMarkdown"
+    output_directory = os.path.join(BASE_DATA_DIR, "CombinedMarkdown")
 
     # Specify the output file name
     output_file = "combined_tour_dates.md"
@@ -30,3 +32,4 @@ def append_to_single_markdown():
 
 # You can now call the function without any arguments
 append_to_single_markdown()
+

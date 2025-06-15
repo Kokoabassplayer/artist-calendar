@@ -1,9 +1,10 @@
 from tour_date_classifier import tour_date_classifier
 import os
+BASE_DATA_DIR=os.environ.get('BASE_DATA_DIR', os.path.join(os.getcwd(), 'data'))
 
 # Example use
 # Path to folder containing images
-folder_path = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/image"
+folder_path = os.path.join(BASE_DATA_DIR, 'image')
 
 # Loop through all image files in the folder
 for filename in os.listdir(folder_path):

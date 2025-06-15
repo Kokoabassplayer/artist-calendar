@@ -5,6 +5,8 @@ from image_to_markdown import csv_to_markdown_with_extracted_data
 import os
 import instaloader
 
+BASE_DATA_DIR = os.environ.get("BASE_DATA_DIR", os.path.join(os.getcwd(), "data"))
+
 if __name__ == "__main__":
     # Initialize Instaloader
     loader = instaloader.Instaloader()
@@ -43,9 +45,9 @@ if __name__ == "__main__":
     until = "2024-12-31"
 
     # Base folders for outputs
-    base_raw_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw"
-    base_classified_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/classified"
-    base_markdown_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
+    base_raw_folder = os.path.join(BASE_DATA_DIR, "CSV", "raw")
+    base_classified_folder = os.path.join(BASE_DATA_DIR, "CSV", "classified")
+    base_markdown_folder = os.path.join(BASE_DATA_DIR, "TourDateMarkdown")
 
     # Ensure all base folders exist
     os.makedirs(base_raw_folder, exist_ok=True)

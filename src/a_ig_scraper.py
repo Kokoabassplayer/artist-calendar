@@ -6,6 +6,7 @@ import time
 from tqdm import tqdm
 import re
 import os
+BASE_DATA_DIR=os.environ.get("BASE_DATA_DIR", os.path.join(os.getcwd(), "data"))
 import random
 
 class GetInstagramProfile:
@@ -84,5 +85,5 @@ if __name__ == "__main__":
         username="retrospect_official",
         since="2024-11-01",
         until="2024-12-01",
-        output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw"
+        output_folder="os.path.join(BASE_DATA_DIR, 'CSV', 'raw')"
     )

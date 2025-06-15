@@ -13,6 +13,7 @@ import re
 import os
 import random
 
+BASE_DATA_DIR=os.environ.get("BASE_DATA_DIR", os.path.join(os.getcwd(), "data"))
 class GetInstagramProfile:
     def __init__(self, loader=None) -> None:
         """
@@ -160,5 +161,6 @@ if __name__=="__main__":
     #cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01")
 
     ### แบบกำหนด folder ของ output
-    cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01", output_folder="/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw")
+    cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01", output_folder="os.path.join(BASE_DATA_DIR, 'CSV', 'raw')")
 """
+
