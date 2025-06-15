@@ -34,7 +34,9 @@ class GetInstagramProfile:
         SINCE = datetime.strptime(since, "%Y-%m-%d")
         UNTIL = datetime.strptime(until, "%Y-%m-%d")
 
-        for post in takewhile(lambda p: p.date > SINCE, dropwhile(lambda p: p.date > UNTIL, posts)):
+        for post in takewhile(
+            lambda p: p.date > SINCE, dropwhile(lambda p: p.date > UNTIL, posts)
+        ):
             self.L.download_post(post, username)
 
     def download_hashtag_posts(self, hashtag):
@@ -97,16 +99,36 @@ class GetInstagramProfile:
 
         total_posts_in_range = sum(
             1
-            for _ in takewhile(lambda p: p.date > SINCE, dropwhile(lambda p: p.date > UNTIL, profile.get_posts()))
+            for _ in takewhile(
+                lambda p: p.date > SINCE,
+                dropwhile(lambda p: p.date > UNTIL, profile.get_posts()),
+            )
         )
 
         with open(output_file, "w", newline="", encoding="utf-8-sig") as file:
             writer = csv.writer(file)
             writer.writerow(
                 [
-                    "Type", "ID", "Profile", "Caption", "Date", "Location", "URL", "TypeName",
-                    "MediaCount", "Likes", "Comments", "Video Views", "Is Video", "Engagement Rate",
-                    "Hashtags", "Mentions", "Tagged Users", "Followers", "Following", "Image URL"
+                    "Type",
+                    "ID",
+                    "Profile",
+                    "Caption",
+                    "Date",
+                    "Location",
+                    "URL",
+                    "TypeName",
+                    "MediaCount",
+                    "Likes",
+                    "Comments",
+                    "Video Views",
+                    "Is Video",
+                    "Engagement Rate",
+                    "Hashtags",
+                    "Mentions",
+                    "Tagged Users",
+                    "Followers",
+                    "Following",
+                    "Image URL",
                 ]
             )
 
@@ -114,7 +136,9 @@ class GetInstagramProfile:
             total_following = profile.followees
 
             for post in tqdm(
-                takewhile(lambda p: p.date > SINCE, dropwhile(lambda p: p.date > UNTIL, posts)),
+                takewhile(
+                    lambda p: p.date > SINCE, dropwhile(lambda p: p.date > UNTIL, posts)
+                ),
                 total=total_posts_in_range,
                 desc="Processing posts",
             ):
@@ -129,19 +153,45 @@ class GetInstagramProfile:
                 engagement_rate = (likes + comments) / total_followers * 100
                 mentions = " ".join(post.caption_mentions)
                 location = post.location.name if post.location else ""
-                tagged_users = " ".join([user.username if hasattr(user, "username") else user for user in post.tagged_users])
+                tagged_users = " ".join(
+                    [
+                        user.username if hasattr(user, "username") else user
+                        for user in post.tagged_users
+                    ]
+                )
 
                 writer.writerow(
                     [
-                        "post", post.mediaid, profile.username, caption, post.date, location, post_url, post.typename,
-                        post.mediacount, likes, comments, video_views, is_video, engagement_rate, hashtags, mentions,
-                        tagged_users, total_followers, total_following, image_url
+                        "post",
+                        post.mediaid,
+                        profile.username,
+                        caption,
+                        post.date,
+                        location,
+                        post_url,
+                        post.typename,
+                        post.mediacount,
+                        likes,
+                        comments,
+                        video_views,
+                        is_video,
+                        engagement_rate,
+                        hashtags,
+                        mentions,
+                        tagged_users,
+                        total_followers,
+                        total_following,
+                        image_url,
                     ]
                 )
-                # Introduce a random delay between requests to avoid hitting rate limits
+                # Introduce a random delay between requests to avoid hitting
+                # rate limits
                 time.sleep(random.uniform(1, 3))
 
-        print(f"Data for {username} from {since} to {until} has been successfully written to {output_file}.")
+        print(
+            f"Data for {username} from {since} to {until} has been successfully written to {output_file}."
+        )
+
 
 """
 if __name__=="__main__":
@@ -153,7 +203,9 @@ if __name__=="__main__":
     #cls.get_users_followings("best_gadgets_2030")
     #cls.get_post_comments("laydline")
 
-    ### วิธีใช้: เปลี่ยน username และ ระยะเวลาที่ด้านล่าง → กดปุ่มรันที่มุมขวาบน → ไฟล์จะถูกวางลงที่โฟลเดอร์เดียวกับที่ไฟล์ของโค๊ดนี้อยู่
+    # วิธีใช้:
+    # เปลี่ยน username และช่วงเวลา แล้วกดรัน
+    # ไฟล์จะถูกวางไว้ในโฟลเดอร์เดียวกับไฟล์โค้ดนี้
     #cls.get_post_info_csv(username="retrospect_official", since="2024-11-01", until="2024-12-01")
 
     ### แบบกำหนด folder ของ output

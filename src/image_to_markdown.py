@@ -1,3 +1,4 @@
+import json
 import os
 import pandas as pd
 from tqdm import tqdm
@@ -6,7 +7,7 @@ import google.generativeai as genai
 import requests
 
 # Load environment variables
-load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 if not os.environ.get("GEMINI_API_KEY"):
@@ -37,36 +38,21 @@ def image_to_markdown(image_path):
                 "max_output_tokens": 8192,
                 "response_mime_type": "text/plain",
             },
-            #system_instruction="Convert the provided image into Markdown format. Ensure that all content from the page is included, such as headers, footers, subtexts, images (with alt text if possible), tables, and any other elements.\n\n  Requirements:\n\n  - Output Only Markdown: Return solely the Markdown content without any additional explanations or comments.\n  - No Delimiters: Do not use code fences or delimiters like ```markdown.\n  - Complete Content: Do not omit any part of the page, including headers, footers, and subtext.",
-            system_instruction="""
-                Convert the provided image into Markdown format, ensuring that all content from the page is included, such as headers, footers, subtexts, images (with alt text if possible), tables, and any other elements.
-
-                Requirements:
-                    •	No Header Symbols: Do not use any Markdown header symbols (#, ##, ###, etc.) under any circumstances. Structure the content using plain text, line breaks, or other formatting elements like bold, italics, or lists to indicate sections and subsections, but not header symbols.
-                    •	Output Only Markdown: Return solely the Markdown content without any additional explanations or comments.
-                    •	No Delimiters: Do not use code fences or delimiters like  ```markdown.
-                    •	Complete Content: Include all content from the page without omitting any part, such as headers, footers, subtexts, tables, and images with appropriate alt text (if available).
-
-                Output Format
-
-                The output must be formatted entirely in valid Markdown without any header symbols. Use other Markdown formatting options (e.g., bold, italics, lists) to organize the content. Ensure that all page elements, including text, images, and tables, are represented correctly.
-
-                RULES
-
-                    1.	DO NOT USE ANY HEADER SYMBOLS (#, ##, ###, ETC.) UNDER ANY CIRCUMSTANCES. STRUCTURE CONTENT USING OTHER FORMATTING OPTIONS SUCH AS BOLD, ITALICS, OR LISTS.
-                    2.	DO NOT OMIT ANY PART OF THE CONTENT, INCLUDING HEADERS, FOOTERS, AND SUBTEXTS.
-                    3.	RETURN ONLY MARKDOWN CONTENT WITHOUT ANY EXPLANATIONS OR COMMENTS.
-                    4.	DO NOT USE CODE FENCES OR DELIMITERS LIKE  ```markdown.
-                """
+            system_instruction=(
+                "Convert the image to Markdown including headers, footers and subtexts. "
+                "Return only Markdown without header symbols or code fences."
+            ),
         )
 
         uploaded_file = upload_to_gemini(image_path, mime_type="image/jpeg")
 
         chat_session = model.start_chat(
-            history=[{
-                "role": "user",
-                "parts": [uploaded_file],
-            }]
+            history=[
+                {
+                    "role": "user",
+                    "parts": [uploaded_file],
+                }
+            ]
         )
 
         response = chat_session.send_message("proceed")
@@ -90,7 +76,7 @@ def download_image(image_url, save_path):
     try:
         response = requests.get(image_url, stream=True, timeout=10)
         response.raise_for_status()
-        with open(save_path, 'wb') as file:
+        with open(save_path, "wb") as file:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
         print(f"Downloaded image: {image_url} -> {save_path}")
@@ -115,22 +101,30 @@ def csv_to_markdown_with_extracted_data(csv_file):
     data = pd.read_csv(csv_file)
 
     # Check required columns
-    required_columns = ['Profile', 'Image URL', 'URL', 'is_tour_date', 'Date']
+    required_columns = ["Profile", "Image URL", "URL", "is_tour_date", "Date"]
     if not all(col in data.columns for col in required_columns):
-        raise ValueError(f"The CSV file must contain the following columns: {required_columns}")
+        raise ValueError(
+            f"The CSV file must contain the following columns: {required_columns}"
+        )
 
     # Filter rows with is_tour_date == 1
-    tour_date_images = data[data['is_tour_date'] == 1]
+    tour_date_images = data[data["is_tour_date"] == 1]
 
     # Extract year and month from the first valid date
     if not tour_date_images.empty:
-        first_date = pd.to_datetime(tour_date_images.iloc[0]['Date'])
+        first_date = pd.to_datetime(tour_date_images.iloc[0]["Date"])
         year_month = first_date.strftime("%Y_%m")
     else:
         year_month = "unknown"
 
-    output_markdown_file = f"/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown/{base_name}_{year_month}.md"
-    image_folder = f"/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateImage/{base_name}"
+    output_markdown_file = os.path.join(
+        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown",
+        f"{base_name}_{year_month}.md",
+    )
+    image_folder = os.path.join(
+        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateImage",
+        base_name,
+    )
 
     print(f"Markdown will be saved to: {output_markdown_file}")
     print(f"Images will be stored in: {image_folder}")
@@ -140,11 +134,15 @@ def csv_to_markdown_with_extracted_data(csv_file):
 
     # Generate Markdown content
     markdown_lines = []
-    for _, row in tqdm(tour_date_images.iterrows(), total=len(tour_date_images), desc="Processing images"):
-        profile_id = row['Profile']
-        date = row['Date']
-        image_url = row['Image URL']
-        post_link = row['URL']
+    for _, row in tqdm(
+        tour_date_images.iterrows(),
+        total=len(tour_date_images),
+        desc="Processing images",
+    ):
+        profile_id = row["Profile"]
+        date = row["Date"]
+        image_url = row["Image URL"]
+        post_link = row["URL"]
 
         # Determine the local image path
         sanitized_date = date.replace(":", "").replace(" ", "_")
@@ -174,10 +172,11 @@ def csv_to_markdown_with_extracted_data(csv_file):
         markdown_lines.append(markdown_content)
 
     # Write Markdown content to file
-    with open(output_markdown_file, 'w', encoding='utf-8') as f:
+    with open(output_markdown_file, "w", encoding="utf-8") as f:
         f.writelines(markdown_lines)
 
     print(f"Markdown content saved to {output_markdown_file}")
+
 
 """
 # Example usage
@@ -185,11 +184,6 @@ if __name__ == "__main__":
     csv_file = "/Users/kokoabassplayer/Desktop/python/palmy_classified.csv"  # Input CSV file
     csv_to_markdown_with_extracted_data(csv_file)
 """
-
-import json
-import os
-from dotenv import load_dotenv
-import google.generativeai as genai
 
 
 def summarize_markdown_to_json_gemini(content):
@@ -250,4 +244,3 @@ def summarize_markdown_to_json_gemini(content):
         return json_data
     except json.JSONDecodeError:
         return response.text
-

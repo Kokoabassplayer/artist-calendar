@@ -8,7 +8,7 @@ import instaloader
 
 if __name__ == "__main__":
     # Initialize Instaloader and load credentials from environment
-    load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
+    load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
     loader = instaloader.Instaloader()
     username = os.environ.get("IG_USERNAME")
     password = os.environ.get("IG_PASSWORD")
@@ -39,10 +39,10 @@ if __name__ == "__main__":
         exit(1)
 
     # List of artist profiles to process
-    #artist_profiles = ["retrospect_official", "bowkylion", "sweetmullet", "palmy.ig"]
-    #artist_profiles = ["artistland"]
-    #artist_profiles = ["zealrockband"]
-    #artist_profiles = ["loveis_ent"]
+    # artist_profiles = ["retrospect_official", "bowkylion", "sweetmullet", "palmy.ig"]
+    # artist_profiles = ["artistland"]
+    # artist_profiles = ["zealrockband"]
+    # artist_profiles = ["loveis_ent"]
     artist_profiles = ["retrospect_official"]
 
     # Date range for scraping
@@ -51,15 +51,20 @@ if __name__ == "__main__":
 
     # Base folders for outputs
     base_raw_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw"
-    base_classified_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/classified"
-    base_markdown_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
+    base_classified_folder = (
+        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/classified"
+    )
+    base_markdown_folder = (
+        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
+    )
 
     # Ensure all base folders exist
     os.makedirs(base_raw_folder, exist_ok=True)
     os.makedirs(base_classified_folder, exist_ok=True)
     os.makedirs(base_markdown_folder, exist_ok=True)
 
-    cls = GetInstagramProfile(loader)  # Pass the authenticated loader to the scraper class
+    # Pass the authenticated loader to the scraper class
+    cls = GetInstagramProfile(loader)
 
     for artist_username in artist_profiles:
         try:
@@ -71,7 +76,9 @@ if __name__ == "__main__":
             os.makedirs(raw_output_folder, exist_ok=True)
 
             # Output CSV for raw data
-            raw_csv_file = os.path.join(raw_output_folder, f"{artist_username}_{since}_to_{until}.csv")
+            raw_csv_file = os.path.join(
+                raw_output_folder, f"{artist_username}_{since}_to_{until}.csv"
+            )
             cls.get_post_info_csv(
                 username=artist_username,
                 since=since,
@@ -82,11 +89,16 @@ if __name__ == "__main__":
 
             # Step 2: Classify images as tour dates
             print(f"Step 2: Classifying images for {artist_username}...")
-            classified_output_folder = os.path.join(base_classified_folder, artist_username)
+            classified_output_folder = os.path.join(
+                base_classified_folder, artist_username
+            )
             os.makedirs(classified_output_folder, exist_ok=True)
 
             # Output CSV for classified data
-            classified_csv_file = os.path.join(classified_output_folder, f"{artist_username}_{since}_to_{until}_classified.csv")
+            classified_csv_file = os.path.join(
+                classified_output_folder,
+                f"{artist_username}_{since}_to_{until}_classified.csv",
+            )
             classify_images(
                 input_csv=raw_csv_file,
                 output_csv=classified_csv_file,
@@ -96,7 +108,9 @@ if __name__ == "__main__":
 
             # Step 3: Extract tour dates and generate Markdown
             print(f"Step 3: Extracting tour dates to Markdown for {artist_username}...")
-            markdown_output_file = os.path.join(base_markdown_folder, f"{artist_username}_{since}_to_{until}.md")
+            markdown_output_file = os.path.join(
+                base_markdown_folder, f"{artist_username}_{since}_to_{until}.md"
+            )
             csv_to_markdown_with_extracted_data(classified_csv_file)
             print(f"Markdown file saved to: {markdown_output_file}")
 
