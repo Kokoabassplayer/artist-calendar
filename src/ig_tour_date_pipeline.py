@@ -3,13 +3,19 @@ from ig_scraper import GetInstagramProfile
 from tour_date_csv_utils import classify_images
 from image_to_markdown import csv_to_markdown_with_extracted_data
 import os
+from dotenv import load_dotenv
 import instaloader
 
 if __name__ == "__main__":
-    # Initialize Instaloader
+    # Initialize Instaloader and load credentials from environment
+    load_dotenv('/Users/kokoabassplayer/Desktop/python/.env')
     loader = instaloader.Instaloader()
-    username = "kenalabama"  # Replace with your Instagram username
-    password = "test1test1"  # Replace with your Instagram password
+    username = os.environ.get("IG_USERNAME")
+    password = os.environ.get("IG_PASSWORD")
+
+    if not username or not password:
+        print("Error: IG_USERNAME or IG_PASSWORD not set.")
+        exit(1)
 
     try:
         # Attempt to login
