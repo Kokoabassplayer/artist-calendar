@@ -1,0 +1,18 @@
+# Ignore generated data and backups
+CSV/
+TourDateImage/
+TourDateMarkdown/
+backupmd/
+image/
+Markdown/
+CombinedMarkdown/
+
+# Ignore Python cache and environment files
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Ignore macOS specific files
+.DS_Store
