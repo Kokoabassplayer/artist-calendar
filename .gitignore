@@ -13,6 +13,13 @@ __pycache__/
 .venv/
 venv/
 env/
+venv_artist/
+.env
 
 # Ignore macOS specific files
 .DS_Store
+
+# Ignore local artifacts/logs
+output/
+backups/
+pipeline.log

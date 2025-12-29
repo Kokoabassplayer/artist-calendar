@@ -1,7 +1,7 @@
 instaloader
 pandas
 Pillow
-google-generativeai
+google-genai
 python-dotenv
 tqdm
 requests

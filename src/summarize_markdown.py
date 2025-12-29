@@ -1,14 +1,16 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-
 if not os.environ.get("GEMINI_API_KEY"):
     print("Error: API key not found.")
     exit()
+
+CLIENT = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+MODEL_NAME = "models/gemini-flash-latest"
 
 
 def summarize_markdown(file_path):
@@ -17,14 +19,12 @@ def summarize_markdown(file_path):
         with open(file_path, "r", encoding="utf-8") as file:
             content = file.read()
 
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-002",
-            generation_config={
-                "temperature": 0,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 8192,
-            },
+        config = types.GenerateContentConfig(
+            temperature=0,
+            topP=0.95,
+            topK=40,
+            maxOutputTokens=8192,
+            responseMimeType="application/json",
         )
 
         test_prompt = f"""
@@ -72,7 +72,11 @@ Markdown content:
 
             """
 
-        response = model.generate_content(test_prompt)
+        response = CLIENT.models.generate_content(
+            model=MODEL_NAME,
+            contents=test_prompt,
+            config=config,
+        )
         return response.text
     except Exception as e:
         print(f"Error summarizing file {file_path}: {e}")

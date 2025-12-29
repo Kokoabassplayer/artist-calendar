@@ -1,73 +1,64 @@
-import os
-import google.generativeai as genai
-from dotenv import load_dotenv
+import logging
+import json
+from typing import Optional, TypedDict
 
-load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
+from google import genai
+from google.genai import types
+from config import Config
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+if not Config.GEMINI_API_KEY:
+    logging.error("API key not found.")
+    exit(1)
 
-if not os.environ.get("GEMINI_API_KEY"):
-    print("Error: API key not found.")
-    exit()
+CLIENT = genai.Client(api_key=Config.GEMINI_API_KEY)
+MODEL_NAME = "models/gemini-flash-latest"
 
 
-def upload_to_gemini(path, mime_type=None):
+class ClassifierResult(TypedDict):
+    is_tour_date: bool
+
+def upload_to_gemini(path: str, mime_type: Optional[str] = None):
     """Uploads the given file to Gemini."""
     try:
-        file = genai.upload_file(path, mime_type=mime_type)
-        print(f"Uploaded file '{file.display_name}' as: {file.uri}")
+        config = types.UploadFileConfig(mimeType=mime_type) if mime_type else None
+        file = CLIENT.files.upload(file=path, config=config)
+        logging.info(f"Uploaded file '{file.display_name}' as: {file.uri}")
         return file
     except Exception as e:
-        print(f"Error uploading file: {e}")
-        exit()
+        logging.error(f"Error uploading file: {e}")
+        exit(1)
 
 
-def tour_date_classifier(image_path):
-    """Converts the provided image into Markdown format."""
+def tour_date_classifier(image_path: str) -> Optional[int]:
+    """
+    Classify the given image as either a tour date or not.
+    Returns 1 if tour date, 0 if not, or None on error.
+    """
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-002",
-            generation_config={
-                "temperature": 0,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 8192,
-                "response_mime_type": "text/plain",
-            },
-            system_instruction=(
-                "Return '1' if the image clearly shows a tour date with artist,"
-                " date and location. Otherwise return '0' with no explanation."
+        config = types.GenerateContentConfig(
+            temperature=0,
+            topP=0.95,
+            topK=40,
+            maxOutputTokens=1024,
+            responseMimeType="application/json",
+            responseSchema=ClassifierResult,
+            systemInstruction=(
+                "Classify the image. Return a JSON object with a single field "
+                "'is_tour_date' (boolean). True if the image clearly shows a tour "
+                "date with artist, date and location. False otherwise."
             ),
         )
 
         uploaded_file = upload_to_gemini(image_path, mime_type="image/jpeg")
 
-        chat_session = model.start_chat(
-            history=[
-                {
-                    "role": "user",
-                    "parts": [uploaded_file],
-                }
-            ]
+        response = CLIENT.models.generate_content(
+            model=MODEL_NAME,
+            contents=[uploaded_file, "analyze"],
+            config=config,
         )
+        result = json.loads(response.text or "{}")
+        return 1 if result.get("is_tour_date") else 0
 
-        response = chat_session.send_message("proceed")
-        return response.text
     except Exception as e:
-        print(f"Error processing the image: {e}")
+        logging.error(f"Error processing the image: {e}")
         return None
-
-
-"""
-# Example use
-# Path to folder containing images
-folder_path = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/image"
-
-# Loop through all image files in the folder
-for filename in os.listdir(folder_path):
-    file_path = os.path.join(folder_path, filename)
-    if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
-        result = tour_date_classifier(file_path)
-        if result is not None:
-            print(f"Image: {filename}, is tour date: {result}")
-"""

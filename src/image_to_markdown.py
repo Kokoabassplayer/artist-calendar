@@ -3,66 +3,86 @@ import os
 import pandas as pd
 from tqdm import tqdm
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import requests
 
 # Load environment variables
-load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-
-if not os.environ.get("GEMINI_API_KEY"):
-    print("Error: API key not found.")
-    exit()
+import logging
+from typing import Optional, Dict, Any, Union, List
+from typing_extensions import TypedDict
+from config import Config
 
 
-def upload_to_gemini(path, mime_type=None):
+# Define strict JSON schema for tour data extraction (database-ready)
+class TourEvent(TypedDict):
+    date: str  # YYYY-MM-DD format (required)
+    event_name: Optional[str]  # Festival name, special show, etc.
+    venue: Optional[str]  # Bar, restaurant, club name
+    city: Optional[str]  # City in English
+    province: Optional[str]  # Thai province in English (e.g., "Chiang Mai")
+    country: str  # Default: "Thailand"
+    time: Optional[str]  # Show time if available (e.g., "21:00")
+    ticket_info: Optional[str]  # Price or ticket details
+    status: str  # "active" or "cancelled"
+
+
+class TourData(TypedDict):
+    artist_name: str  # Band/artist name
+    instagram_handle: Optional[str]  # For artist identification (e.g., "scrubb_official")
+    tour_name: Optional[str]  # e.g., "December Tour 2024"
+    contact_info: Optional[str]  # Booking contact if visible
+    source_month: str  # YYYY-MM for versioning (e.g., "2024-12")
+    events: List[TourEvent]
+
+if not Config.GEMINI_API_KEY:
+    logging.error("API key not found.")
+    exit(1)
+
+CLIENT = genai.Client(api_key=Config.GEMINI_API_KEY)
+MODEL_NAME = "models/gemini-flash-latest"
+
+
+def upload_to_gemini(path: str, mime_type: Optional[str] = None):
     """Uploads the given file to Gemini."""
     try:
-        file = genai.upload_file(path, mime_type=mime_type)
-        print(f"Uploaded file '{file.display_name}' as: {file.uri}")
+        config = types.UploadFileConfig(mimeType=mime_type) if mime_type else None
+        file = CLIENT.files.upload(file=path, config=config)
+        logging.info(f"Uploaded file '{file.display_name}' as: {file.uri}")
         return file
     except Exception as e:
-        print(f"Error uploading file: {e}")
-        exit()
+        logging.error(f"Error uploading file: {e}")
+        exit(1)
 
 
-def image_to_markdown(image_path):
+def image_to_markdown(image_path: str) -> Optional[str]:
     """Converts the provided image into Markdown format."""
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-002",
-            generation_config={
-                "temperature": 0,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 8192,
-                "response_mime_type": "text/plain",
-            },
-            system_instruction=(
+        config = types.GenerateContentConfig(
+            temperature=0,
+            topP=0.95,
+            topK=40,
+            maxOutputTokens=8192,
+            responseMimeType="text/plain",
+            systemInstruction=(
                 "Convert the image to Markdown including headers, footers and subtexts. "
                 "Return only Markdown without header symbols or code fences."
             ),
         )
 
         uploaded_file = upload_to_gemini(image_path, mime_type="image/jpeg")
-
-        chat_session = model.start_chat(
-            history=[
-                {
-                    "role": "user",
-                    "parts": [uploaded_file],
-                }
-            ]
+        response = CLIENT.models.generate_content(
+            model=MODEL_NAME,
+            contents=[uploaded_file, "proceed"],
+            config=config,
         )
-
-        response = chat_session.send_message("proceed")
         return response.text
     except Exception as e:
-        print(f"Error processing the image: {e}")
+        logging.error(f"Error processing the image: {e}")
         return None
 
 
-def download_image(image_url, save_path):
+def download_image(image_url: str, save_path: str) -> bool:
     """
     Downloads an image from a URL and saves it locally.
 
@@ -79,10 +99,10 @@ def download_image(image_url, save_path):
         with open(save_path, "wb") as file:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
-        print(f"Downloaded image: {image_url} -> {save_path}")
+        logging.info(f"Downloaded image: {image_url} -> {save_path}")
         return True
     except Exception as e:
-        print(f"Failed to download image from {image_url}: {e}")
+        logging.error(f"Failed to download image from {image_url}: {e}")
         return False
 
 
@@ -127,9 +147,11 @@ def csv_to_markdown_with_extracted_data(
         year_month = "unknown"
 
     if output_markdown_file is None:
-        output_markdown_file = f"{base_name}_{year_month}.md"
+        filename = f"{base_name}_{year_month}.md"
+        output_markdown_file = Config.MARKDOWN_DIR / filename
+        
     if image_folder is None:
-        image_folder = os.path.join("image_output", base_name)
+        image_folder = Config.IMAGE_OUTPUT_DIR / base_name
 
     print(f"Markdown will be saved to: {output_markdown_file}")
     print(f"Images will be stored in: {image_folder}")
@@ -177,10 +199,23 @@ def csv_to_markdown_with_extracted_data(
         markdown_lines.append(markdown_content)
 
     # Write Markdown content to file
+    full_markdown_content = "".join(markdown_lines)
     with open(output_markdown_file, "w", encoding="utf-8") as f:
-        f.writelines(markdown_lines)
+        f.write(full_markdown_content)
 
-    print(f"Markdown content saved to {output_markdown_file}")
+    logging.info(f"Markdown content saved to {output_markdown_file}")
+    
+    # Summarize to JSON
+    logging.info("Summarizing extracted content to JSON...")
+    json_data = summarize_markdown_to_json_gemini(full_markdown_content)
+    
+    if isinstance(json_data, dict):
+        json_output_file = output_markdown_file.with_suffix(".json")
+        with open(json_output_file, "w", encoding="utf-8") as f:
+            json.dump(json_data, f, ensure_ascii=False, indent=4)
+        logging.info(f"JSON summary saved to {json_output_file}")
+    else:
+        logging.error("Failed to generate valid JSON summary.")
 
 
 """
@@ -191,61 +226,48 @@ if __name__ == "__main__":
 """
 
 
-def summarize_markdown_to_json_gemini(content):
+def summarize_markdown_to_json_gemini(content: str) -> Union[TourData, str]:
+    """
+    Summarizes the extracted markdown content into a structured JSON object.
+    Uses Gemini's response_schema to guarantee consistent output structure.
+    
+    Returns:
+        A TourData dictionary, or an empty dict string on error.
+    """
     prompt = f"""
-    You are given the following Markdown content that includes artist tour dates and possibly contact info.
+    Extract tour data from this content:
+    - artist_name: Band/artist name
+    - tour_name: Tour title if visible (e.g., "December Tour 2024")
+    - contact_info: Booking contact if visible
+    - events: List of events with:
+      - date: YYYY-MM-DD format
+      - event_name: Festival or special event name
+      - venue: Bar, restaurant, club name
+      - city: City name in English
+      - province: Thai province in English
+      - country: Default "Thailand" unless foreign
+      - time: Show time if visible (e.g., "21:00")
+      - ticket_info: Price or ticket details if visible
 
-    Your task:
-    1. Identify the artist's name.
-    2. Identify any contact information if available.
-    3. Extract events. Each event should have:
-    - original_date_text: the exact date text as found (e.g. "5/12" or "3.12.2024")
-    - parsed_date: a date in YYYYMMDD if you can infer the year and convert it; otherwise null.
-    - event_name: name of the event or festival (if identifiable).
-    - location: venue or place name (can be the same as event_name if not distinguishable).
-    - country: "Thailand" by default unless a known foreign location like "ปอยเปต" indicates Cambodia, etc.
-
-    If you are unsure, provide your best guess. If parsing fails, leave fields null as appropriate.
-
-    Return only valid JSON in the following structure:
-
-    ```json
-    {{
-    "artists": [
-        {{
-        "name": "Artist Name",
-        "contact": "Contact Info if available",
-        "events": [
-            {{
-            "original_date_text": "Date Text",
-            "parsed_date": "YYYYMMDD or null",
-            "event_name": "Event Name or null",
-            "location": "Location or null",
-            "country": "Country or null"
-            }}
-        ]
-        }}
-    ]
-    }}
-
-    Markdown content:
+    Content:
     {content}
     """
 
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash-002",
-        generation_config={
-            "temperature": 0,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 8192,
-        },
+    config = types.GenerateContentConfig(
+        temperature=0,
+        responseMimeType="application/json",
+        responseSchema=TourData,
     )
 
-    response = model.generate_content(prompt)
-
     try:
-        json_data = json.loads(response.text)
+        response = CLIENT.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=config,
+        )
+        logging.info(f"Gemini Raw Response: {response.text}")
+        json_data = json.loads(response.text or "{}")
         return json_data
-    except json.JSONDecodeError:
-        return response.text
+    except Exception as e:
+        logging.error(f"Error parsing JSON from Gemini response: {e}")
+        return "{}"
