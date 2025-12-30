@@ -1,9 +1,12 @@
 # Artist Calendar - Persistent Context
 
+> Note: This document references the legacy Instagram/CSV pipeline for background.
+> The current app in this repo focuses on local poster ingestion; see `README.md`.
+
 ## Context (what exists now)
-- Repo pipeline: scrape Instagram posts -> CSV -> classify tour posters -> OCR to
-  Markdown/JSON. Outputs: `CSV/raw`, `CSV/classified`, `TourDateMarkdown`,
-  `TourDateImage`.
+- Legacy pipeline (removed): scrape Instagram posts -> CSV -> classify tour
+  posters -> OCR to Markdown/JSON. Outputs used to live in `CSV/raw`,
+  `CSV/classified`, `TourDateMarkdown`, and `TourDateImage`.
 - Tableau dashboard has 3 views: Calendar, Artist near me, Backend.
 - Calendar fields (from Tableau bootstrapSession):
   - Artist, show date (day/month/year/weekday, year-month), location
@@ -17,8 +20,8 @@
     music label, insert date, artist name, Facebook link, artist image.
 - Images are highly variable (dense text, neon/glow, multi-column, mixed
   Thai/English, small fonts), so extraction must be layout-aware with QA.
-- Existing `database/schema.sql` is a good starting point (artists, posters,
-  events, user prefs, saved events) but needs production extensions.
+- Existing `database/schema_local.sql` covers the local ingest flow (artists,
+  posters, events) but production will need extensions.
 
 ## Future production (what we will build)
 - Product: mobile-first web app (later native) that replaces Tableau.

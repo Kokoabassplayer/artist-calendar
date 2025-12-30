@@ -1,8 +1,8 @@
 import argparse
 import json
+import mimetypes
 import re
-from typing import Optional, List
-from typing_extensions import TypedDict
+from typing import Optional, List, TypedDict
 
 from google import genai
 from google.genai import types
@@ -33,19 +33,31 @@ class TourData(TypedDict):
     events: List[TourEvent]
 
 
-if not Config.GEMINI_API_KEY:
-    raise SystemExit("GEMINI_API_KEY not set.")
+_CLIENT: Optional[genai.Client] = None
+MODEL_NAME = Config.GEMINI_MODEL
 
-CLIENT = genai.Client(api_key=Config.GEMINI_API_KEY)
-MODEL_NAME = "models/gemini-flash-latest"
+
+def _get_client() -> genai.Client:
+    global _CLIENT
+    if _CLIENT is None:
+        if not Config.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY not set.")
+        _CLIENT = genai.Client(api_key=Config.GEMINI_API_KEY)
+    return _CLIENT
 
 
 def upload_to_gemini(path: str, mime_type: Optional[str] = None):
     try:
+        client = _get_client()
         config = types.UploadFileConfig(mimeType=mime_type) if mime_type else None
-        return CLIENT.files.upload(file=path, config=config)
+        return client.files.upload(file=path, config=config)
     except Exception as exc:
-        raise SystemExit(f"Error uploading file: {exc}") from exc
+        raise RuntimeError(f"Error uploading file: {exc}") from exc
+
+
+def _guess_mime_type(path: str) -> Optional[str]:
+    mime_type, _ = mimetypes.guess_type(path)
+    return mime_type
 
 
 _MONTHS = {
@@ -424,8 +436,10 @@ def image_to_structured(image_path: str) -> TourData:
         ),
     )
 
-    uploaded_file = upload_to_gemini(image_path, mime_type="image/jpeg")
-    response = CLIENT.models.generate_content(
+    mime_type = _guess_mime_type(image_path) or "image/jpeg"
+    uploaded_file = upload_to_gemini(image_path, mime_type=mime_type)
+    client = _get_client()
+    response = client.models.generate_content(
         model=MODEL_NAME,
         contents=[uploaded_file, "extract"],
         config=config,
@@ -445,120 +459,9 @@ def main():
         "--output",
         help="Optional path to save JSON output.",
     )
-    parser.add_argument(
-        "--ground",
-        action="store_true",
-        help="Use location grounding to enrich city/province/venue.",
-    )
-    parser.add_argument(
-        "--ground-cache",
-        default="output/grounding_cache.json",
-        help="Path to grounding cache JSON.",
-    )
-    parser.add_argument(
-        "--ground-min-confidence",
-        type=float,
-        default=0.6,
-        help="Minimum confidence to apply grounded data.",
-    )
-    parser.add_argument(
-        "--ground-overwrite",
-        action="store_true",
-        help="Overwrite existing city/province/country/venue values.",
-    )
-    parser.add_argument(
-        "--ground-max-events",
-        type=int,
-        help="Max number of events to ground (useful for quick tests).",
-    )
-    parser.add_argument(
-        "--ground-source",
-        choices=["osm", "jina"],
-        default="osm",
-        help="Grounding source to use.",
-    )
-    parser.add_argument(
-        "--ground-osm-user-agent",
-        help="User-Agent for OSM Nominatim requests.",
-    )
-    parser.add_argument(
-        "--ground-osm-delay",
-        type=float,
-        default=1.0,
-        help="Minimum delay in seconds between OSM requests.",
-    )
-    parser.add_argument(
-        "--ground-osm-language",
-        default="en",
-        help="OSM response language (accept-language).",
-    )
-    parser.add_argument(
-        "--ground-osm-timeout",
-        type=float,
-        default=10.0,
-        help="Timeout in seconds for OSM requests.",
-    )
-    parser.add_argument(
-        "--ground-jina-top-k",
-        type=int,
-        default=1,
-        help="Number of Jina search results to use.",
-    )
-    parser.add_argument(
-        "--ground-jina-mode",
-        choices=["search", "reader", "hybrid"],
-        default="search",
-        help="Jina grounding mode (search-only, reader, or hybrid).",
-    )
-    parser.add_argument(
-        "--ground-jina-reader-chars",
-        type=int,
-        default=400,
-        help="Max characters to keep from each Jina reader result.",
-    )
-    parser.add_argument(
-        "--ground-jina-timeout",
-        type=float,
-        default=35.0,
-        help="Timeout in seconds for Jina requests.",
-    )
-    parser.add_argument(
-        "--ground-jina-search-url",
-        help="Override Jina search endpoint (supports {query}).",
-    )
-    parser.add_argument(
-        "--ground-jina-reader-url",
-        help="Override Jina reader endpoint (supports {url}).",
-    )
     args = parser.parse_args()
 
     data = image_to_structured(args.image)
-    if args.ground:
-        from location_grounding import ground_tour_data
-        from pathlib import Path
-
-        data = ground_tour_data(
-            data,
-            cache_path=Path(args.ground_cache) if args.ground_cache else None,
-            min_confidence=args.ground_min_confidence,
-            overwrite=args.ground_overwrite,
-            max_events=args.ground_max_events,
-            source=args.ground_source,
-            osm_user_agent=args.ground_osm_user_agent,
-            osm_delay=args.ground_osm_delay,
-            osm_language=args.ground_osm_language,
-            osm_timeout=args.ground_osm_timeout,
-            jina_mode=args.ground_jina_mode,
-            jina_top_k=args.ground_jina_top_k,
-            jina_reader_chars=args.ground_jina_reader_chars,
-            jina_timeout=args.ground_jina_timeout,
-            jina_search_url=(
-                args.ground_jina_search_url if args.ground_jina_search_url else None
-            ),
-            jina_reader_url=(
-                args.ground_jina_reader_url if args.ground_jina_reader_url else None
-            ),
-        )
     output = json.dumps(data, ensure_ascii=False, indent=2)
 
     if args.output:

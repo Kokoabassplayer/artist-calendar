@@ -1,31 +1,65 @@
 # Artist Calendar
 
-This project provides a set of scripts for scraping Instagram data and
-converting it to Markdown. Some scripts require Instagram login
-credentials. A small command line application is available under
-`src/app.py` to run the full pipeline.
+Local ingestion UI for tour posters. Upload an image or paste a URL, extract
+structured event data with Gemini, and store results in a local SQLite database
+for review.
 
-## Environment Variables
+## Setup
 
-Before running `src/app.py`, `src/ig_tour_date_pipeline.py` or `src/a_pipe.py`, set
-the following variables in your environment or in a `.env` file:
-
-- `IG_USERNAME` – Instagram username used for authentication
-- `IG_PASSWORD` – password for the Instagram account
-
-These scripts load environment variables using `python-dotenv`, so you
-may create a `.env` file with these keys or export them in your shell.
-
-## Example usage
-
-To run the full pipeline for one or more artists:
+Python 3.10+ is recommended.
 
 ```bash
-python src/app.py \
-    --artists retrospect_official,another_band \
-    --since 2024-01-01 --until 2024-12-31 \
-    --output output --env-file .env
+python -m venv venv_artist
+source venv_artist/bin/activate
+pip install -r requirements.txt
 ```
 
-The generated CSV and Markdown files will be written under the
-specified output directory.
+## Environment variables
+
+- `GEMINI_API_KEY` (required)
+- `GEMINI_MODEL` (optional, default: `models/gemini-flash-latest`)
+- `LOCAL_DB_PATH` (optional, default: `output/local.db`)
+- `KEEP_REMOTE_DOWNLOADS` (optional, `1` keeps remote images on disk)
+- `REMOTE_CACHE_MAX_FILES` (optional, default: `200`)
+- `JINA_API_KEY` (optional, improves URL image scraping fallback)
+
+Create a `.env` file or export variables before running.
+
+## Run the app
+
+```bash
+python scripts/local_ingest_ui.py
+```
+
+Open `http://127.0.0.1:5001` in your browser.
+
+If you plan to ingest tricky URLs, install Playwright browsers once:
+
+```bash
+python -m playwright install chromium
+```
+
+## CLI helpers
+
+- Extract structured data:
+
+```bash
+python src/image_to_structured.py path/to/poster.jpg --output output/poster.json
+```
+
+- Ingest structured JSON into SQLite:
+
+```bash
+python scripts/ingest_local.py output/poster.json --db output/local.db
+```
+
+- Test Gemini connectivity:
+
+```bash
+python scripts/test_llm_api.py
+```
+
+## Data locations
+
+- SQLite DB: `output/local.db`
+- Uploaded/remote cache images: `output/uploads`

@@ -1,5 +1,8 @@
 # Artist Calendar - Dashboard Discovery (Initial)
 
+> Note: This document preserves legacy Tableau/pipeline discovery notes.
+> The current app in this repo focuses on local poster ingestion; see `README.md`.
+
 This document summarizes what we can infer from the existing Tableau Public
 dashboard and the current data pipeline in this repo. It is intentionally
 lightweight and focused on enabling a future web/mobile application.
@@ -118,13 +121,14 @@ lightweight and focused on enabling a future web/mobile application.
 - `docs/dashboard-artist-near-me.png` (Artist near me tab)
 - `docs/dashboard-backend.png` (Backend tab)
 
-## Current pipeline (this repo)
-- `src/ig_scraper.py`: Scrapes Instagram posts to CSV.
-- `src/tour_date_classifier.py`: Gemini classifies images as tour-date or not.
-- `src/image_to_markdown.py`: Downloads tour-date images, extracts text to
-  Markdown, and summarizes to JSON with Gemini.
-- Output folders: `CSV/raw`, `CSV/classified`, `TourDateMarkdown`,
-  `TourDateImage`.
+## Legacy pipeline (removed)
+These modules were part of the old Instagram/CSV pipeline and are no longer
+present in the repo:
+- `src/ig_scraper.py`: Scraped Instagram posts to CSV.
+- `src/tour_date_classifier.py`: Classified images as tour-date or not.
+- `src/image_to_markdown.py`: Extracted poster text to Markdown/JSON.
+- Outputs used to live in `CSV/raw`, `CSV/classified`, `TourDateMarkdown`,
+  and `TourDateImage`.
 
 ## Image variability (TourDateImage samples)
 - Posters vary widely: dense text, neon/glow, heavy backgrounds, and photos.

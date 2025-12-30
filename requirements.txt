@@ -1,9 +1,5 @@
-instaloader
-pandas
-Pillow
 google-genai
 python-dotenv
-tqdm
 requests
 flask
 playwright

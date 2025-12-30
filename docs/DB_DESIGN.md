@@ -1,5 +1,8 @@
 # Database Design (vNext)
 
+> Note: This is a forward-looking schema design. The current app uses
+> `database/schema_local.sql` for local SQLite ingestion.
+
 ## Goals
 - Store tour dates in a DB-friendly, normalized form with traceable provenance.
 - Keep raw extraction output for reprocessing and audit.
