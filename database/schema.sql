@@ -47,6 +47,7 @@ CREATE TABLE posters (
     source_profile_url TEXT,
     source_posted_at TIMESTAMPTZ,
     source_caption TEXT,
+    poster_confidence NUMERIC(4,3),
     uploaded_by UUID REFERENCES auth.users(id), -- NULL if scraped
 
     -- Image metadata

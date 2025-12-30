@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS posters (
     source_profile_url TEXT,
     source_posted_at TEXT,
     source_caption TEXT,
+    poster_confidence REAL,
     image_hash TEXT,
     image_width INTEGER,
     image_height INTEGER,

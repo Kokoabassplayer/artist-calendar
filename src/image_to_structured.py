@@ -20,6 +20,7 @@ class TourEvent(TypedDict):
     time: Optional[str]
     ticket_info: Optional[str]
     status: str
+    confidence: Optional[float]
 
 
 class TourData(TypedDict):
@@ -28,6 +29,7 @@ class TourData(TypedDict):
     tour_name: Optional[str]
     contact_info: Optional[str]
     source_month: str
+    poster_confidence: Optional[float]
     events: List[TourEvent]
 
 
@@ -72,6 +74,131 @@ _MONTHS = {
     "december": 12,
     "dec": 12,
 }
+
+_THAI_PROVINCES = {
+    "กรุงเทพมหานคร",
+    "กระบี่",
+    "กาญจนบุรี",
+    "กาฬสินธุ์",
+    "กำแพงเพชร",
+    "ขอนแก่น",
+    "จันทบุรี",
+    "ฉะเชิงเทรา",
+    "ชลบุรี",
+    "ชัยนาท",
+    "ชัยภูมิ",
+    "ชุมพร",
+    "เชียงราย",
+    "เชียงใหม่",
+    "ตรัง",
+    "ตราด",
+    "ตาก",
+    "นครนายก",
+    "นครปฐม",
+    "นครพนม",
+    "นครราชสีมา",
+    "นครศรีธรรมราช",
+    "นครสวรรค์",
+    "นนทบุรี",
+    "นราธิวาส",
+    "น่าน",
+    "บึงกาฬ",
+    "บุรีรัมย์",
+    "ปทุมธานี",
+    "ประจวบคีรีขันธ์",
+    "ปราจีนบุรี",
+    "ปัตตานี",
+    "พะเยา",
+    "พระนครศรีอยุธยา",
+    "พังงา",
+    "พัทลุง",
+    "พิจิตร",
+    "พิษณุโลก",
+    "เพชรบุรี",
+    "เพชรบูรณ์",
+    "แพร่",
+    "ภูเก็ต",
+    "มหาสารคาม",
+    "มุกดาหาร",
+    "แม่ฮ่องสอน",
+    "ยะลา",
+    "ยโสธร",
+    "ระนอง",
+    "ระยอง",
+    "ราชบุรี",
+    "ร้อยเอ็ด",
+    "ลพบุรี",
+    "ลำปาง",
+    "ลำพูน",
+    "เลย",
+    "ศรีสะเกษ",
+    "สกลนคร",
+    "สงขลา",
+    "สตูล",
+    "สมุทรปราการ",
+    "สมุทรสงคราม",
+    "สมุทรสาคร",
+    "สระแก้ว",
+    "สระบุรี",
+    "สิงห์บุรี",
+    "สุโขทัย",
+    "สุพรรณบุรี",
+    "สุราษฎร์ธานี",
+    "สุรินทร์",
+    "หนองคาย",
+    "หนองบัวลำภู",
+    "อ่างทอง",
+    "อำนาจเจริญ",
+    "อุดรธานี",
+    "อุตรดิตถ์",
+    "อุทัยธานี",
+    "อุบลราชธานี",
+}
+
+_RAW_EVENT_KEYS = {"raw_text", "date_text", "time_text"}
+
+
+def _strip_raw_fields(data: dict) -> dict:
+    cleaned = {key: value for key, value in data.items() if not key.endswith("_raw")}
+    events = cleaned.get("events") or []
+    cleaned_events = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        cleaned_event = {
+            key: value
+            for key, value in event.items()
+            if not key.endswith("_raw") and key not in _RAW_EVENT_KEYS
+        }
+        cleaned_events.append(cleaned_event)
+    cleaned["events"] = cleaned_events
+    return cleaned
+
+
+def _split_city_province(value: str) -> Optional[tuple[str, str]]:
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    for province in _THAI_PROVINCES:
+        if cleaned.endswith(province) and len(cleaned) > len(province):
+            city = cleaned[: -len(province)].strip(" -/|,")
+            if city:
+                return city, province
+    return None
+
+
+def _normalize_location_fields(event: dict) -> None:
+    city = (event.get("city") or "").strip()
+    province = (event.get("province") or "").strip()
+
+    if not province and city in _THAI_PROVINCES:
+        event["province"] = city
+
+    if not event.get("province") and city:
+        split = _split_city_province(city)
+        if split:
+            event["city"] = split[0]
+            event["province"] = split[1]
 
 
 def _extract_year(text: str) -> Optional[int]:
@@ -222,6 +349,7 @@ def _normalize_date(value: Optional[str], source_month: Optional[str]) -> Option
 
 
 def _normalize_tour_data(data: dict) -> dict:
+    data = _strip_raw_fields(data)
     source_month = _normalize_source_month(data.get("source_month"))
     if source_month:
         data["source_month"] = source_month
@@ -234,10 +362,7 @@ def _normalize_tour_data(data: dict) -> dict:
         raw_date = event.get("date")
         raw_time = event.get("time")
 
-        if "date_text" not in event:
-            event["date_text"] = raw_date
-        if "time_text" not in event:
-            event["time_text"] = raw_time
+        _normalize_location_fields(event)
 
         event["date"] = _normalize_date(raw_date, source_month)
         event["time"] = _normalize_time(raw_time)
@@ -246,22 +371,56 @@ def _normalize_tour_data(data: dict) -> dict:
         if not event.get("country"):
             event["country"] = "Thailand"
 
+        confidence = event.get("confidence")
+        try:
+            if confidence is None:
+                event["confidence"] = None
+            else:
+                value = float(confidence)
+                if value < 0:
+                    value = 0.0
+                if value > 1:
+                    value = 1.0
+                event["confidence"] = round(value, 3)
+        except (TypeError, ValueError):
+            event["confidence"] = None
         normalized_events.append(event)
 
     data["events"] = normalized_events
+    poster_conf = data.get("poster_confidence")
+    try:
+        if poster_conf is None:
+            data["poster_confidence"] = None
+        else:
+            value = float(poster_conf)
+            if value < 0:
+                value = 0.0
+            if value > 1:
+                value = 1.0
+            data["poster_confidence"] = round(value, 3)
+    except (TypeError, ValueError):
+        data["poster_confidence"] = None
     return data
 
 
 def image_to_structured(image_path: str) -> TourData:
     config = types.GenerateContentConfig(
-        temperature=0,
+        temperature=0.1,
+        maxOutputTokens=8192,
         responseMimeType="application/json",
         responseSchema=TourData,
         systemInstruction=(
             "Extract structured tour data from the image. "
             "Return JSON only and follow the schema exactly. "
+            "Keep text as close to the original as possible. "
+            "You may fix obvious OCR typos or missing spaces, but do not translate, "
+            "expand abbreviations, or invent new info. "
             "Always use YYYY-MM for source_month and YYYY-MM-DD for event dates. "
-            "If only day is shown, infer month/year from the poster context."
+            "If only day is shown, infer month/year from the poster context. "
+            "Set event confidence and poster_confidence between 0 and 1. "
+            "Use higher values for clearer text and complete fields, lower values for "
+            "uncertain or incomplete entries, and vary them across events. "
+            "Do not include any *_raw, raw_text, date_text, or time_text fields."
         ),
     )
 

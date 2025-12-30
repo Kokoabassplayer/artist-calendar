@@ -172,6 +172,7 @@ def ingest_structured(
     artist_id = artist_row["id"]
     source_month = payload.get("source_month") or "unknown"
     tour_name = payload.get("tour_name")
+    poster_confidence = payload.get("poster_confidence")
 
     image_url_value = image_url or _build_image_url(payload, fallback=str(input_path))
 
@@ -198,6 +199,7 @@ def ingest_structured(
             "source_month": source_month,
             "source_type": source_type,
             "source_url": source_url,
+            "poster_confidence": poster_confidence,
             "version": next_version,
             "is_latest": True,
             "raw_json": payload,
@@ -226,6 +228,7 @@ def ingest_structured(
                 "ticket_info": event.get("ticket_info"),
                 "status": event.get("status") or "active",
                 "review_status": "pending",
+                "confidence": event.get("confidence"),
             }
         )
 

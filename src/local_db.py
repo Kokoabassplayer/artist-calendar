@@ -19,7 +19,26 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    _ensure_columns(conn)
     return conn
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
+def _ensure_column(
+    conn: sqlite3.Connection, table: str, column: str, ddl: str
+) -> None:
+    if _column_exists(conn, table, column):
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    _ensure_column(conn, "posters", "poster_confidence", "REAL")
+    _ensure_column(conn, "events", "confidence", "REAL")
 
 
 def _build_image_url(data: Dict[str, Any], fallback: str) -> str:
@@ -71,6 +90,7 @@ def _insert_poster(
     source_month: str,
     source_type: str,
     source_url: Optional[str],
+    poster_confidence: Optional[float],
     raw_json: Dict[str, Any],
 ) -> str:
     latest_rows = conn.execute(
@@ -96,9 +116,9 @@ def _insert_poster(
         """
         INSERT INTO posters (
             id, artist_id, image_url, tour_name, source_month, source_type, source_url,
-            version, is_latest, raw_json, extraction_status, extracted_at, created_at
+            poster_confidence, version, is_latest, raw_json, extraction_status, extracted_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             poster_id,
@@ -108,6 +128,7 @@ def _insert_poster(
             source_month,
             source_type,
             source_url,
+            poster_confidence,
             next_version,
             1,
             json.dumps(raw_json, ensure_ascii=False),
@@ -133,10 +154,10 @@ def _insert_events(
             """
             INSERT INTO events (
                 id, poster_id, date, date_text, event_name, venue, city, province,
-                country, time, time_text, ticket_info, status, review_status,
+                country, time, time_text, ticket_info, status, review_status, confidence,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_id,
@@ -153,6 +174,7 @@ def _insert_events(
                 event.get("ticket_info"),
                 event.get("status") or "active",
                 event.get("review_status") or "pending",
+                event.get("confidence"),
                 _now(),
                 _now(),
             ),
@@ -176,6 +198,7 @@ def ingest_structured(
     instagram_handle = data.get("instagram_handle")
     contact_info = data.get("contact_info")
     tour_name = data.get("tour_name")
+    poster_confidence = data.get("poster_confidence")
 
     image_url_value = image_url or _build_image_url(data, fallback="unknown")
 
@@ -192,6 +215,7 @@ def ingest_structured(
             source_month=source_month,
             source_type=source_type,
             source_url=source_url,
+            poster_confidence=poster_confidence,
             raw_json=data,
         )
         event_count = _insert_events(conn, poster_id, data.get("events") or [])

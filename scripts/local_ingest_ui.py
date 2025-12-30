@@ -378,6 +378,21 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         background: rgba(226, 109, 92, 0.2);
         color: var(--accent-2);
       }}
+      .badge.conf {{
+        margin-left: 6px;
+      }}
+      .badge.conf.status-good {{
+        background: rgba(28, 124, 123, 0.12);
+        color: var(--accent);
+      }}
+      .badge.conf.status-warn {{
+        background: rgba(242, 193, 78, 0.18);
+        color: #a96d00;
+      }}
+      .badge.conf.status-bad {{
+        background: rgba(226, 109, 92, 0.18);
+        color: var(--accent-2);
+      }}
       .pill.status-good {{
         background: rgba(28, 124, 123, 0.16);
         color: var(--accent);
@@ -660,6 +675,7 @@ def _fetch_posters(limit: int = 10):
     rows = conn.execute(
         """
         SELECT p.id, p.image_url, p.source_month, p.tour_name, p.created_at,
+               p.poster_confidence,
                a.name AS artist_name,
                COUNT(e.id) AS event_count,
                SUM(CASE WHEN e.review_status = 'approved' THEN 1 ELSE 0 END) AS approved_count,
@@ -668,7 +684,7 @@ def _fetch_posters(limit: int = 10):
         FROM posters p
         JOIN artists a ON a.id = p.artist_id
         LEFT JOIN events e ON e.poster_id = p.id
-        GROUP BY p.id, p.image_url, p.source_month, p.tour_name, p.created_at, a.name
+        GROUP BY p.id, p.image_url, p.source_month, p.tour_name, p.created_at, p.poster_confidence, a.name
         ORDER BY p.created_at DESC
         LIMIT ?
         """,
@@ -686,7 +702,7 @@ def _fetch_poster(poster_id: str):
     row = conn.execute(
         """
         SELECT p.id, p.image_url, p.source_month, p.tour_name, p.created_at,
-               p.source_url, p.raw_json, a.name AS artist_name
+               p.source_url, p.raw_json, p.poster_confidence, a.name AS artist_name
         FROM posters p
         JOIN artists a ON a.id = p.artist_id
         WHERE p.id = ?
@@ -705,7 +721,7 @@ def _fetch_events(poster_id: str):
     rows = conn.execute(
         """
         SELECT id, date, event_name, venue, city, province, time, ticket_info,
-               status, review_status
+               status, review_status, confidence
         FROM events
         WHERE poster_id = ?
         ORDER BY date
@@ -724,7 +740,7 @@ def _fetch_event(event_id: str):
     row = conn.execute(
         """
         SELECT id, poster_id, date, event_name, venue, city, province, time,
-               ticket_info, status, review_status
+               ticket_info, status, review_status, confidence
         FROM events
         WHERE id = ?
         """,
@@ -836,6 +852,8 @@ def review_view(poster_id: str) -> str:
     rejected_count = sum(1 for row in events if row["review_status"] == "rejected")
     status_label, status_class = _poster_status(len(events), pending_count, rejected_count)
     warning = _poster_image_warning(poster["image_url"], poster["source_url"], poster["raw_json"])
+    poster_conf_pill = _confidence_pill(poster["poster_confidence"])
+    poster_conf_pill = _confidence_pill(poster["poster_confidence"])
     show_all = request.args.get("show") == "all"
     filtered = events if show_all else [row for row in events if row["review_status"] == "pending"]
 
@@ -853,6 +871,7 @@ def review_view(poster_id: str) -> str:
         missing_text = f"Missing: {', '.join(missing)}" if missing else ""
         status = row["review_status"] or "pending"
         status_class = status if status in {"approved", "rejected"} else "pending"
+        conf_badge = _confidence_badge(row["confidence"])
 
         quick_approve = ""
         if row["review_status"] != "approved":
@@ -871,6 +890,7 @@ def review_view(poster_id: str) -> str:
               <div>
                 <div class="event-title">{_esc(title)}
                   <span class="badge {status_class}">{_esc(status)}</span>
+                  {conf_badge}
                 </div>
                 <div class="event-meta">{_esc(location or 'Location not set')}</div>
                 {f'<div class="event-meta missing">{missing_text}</div>' if missing_text else ''}
@@ -928,6 +948,7 @@ def review_view(poster_id: str) -> str:
               <span class="pill accent">approved {approved_count}</span>
               <span class="pill">rejected {rejected_count}</span>
               <span class="pill {status_class}">{status_label}</span>
+              {poster_conf_pill}
             </div>
             <div class="actions">
               <form method="post" action="/poster/{poster_id}/approve-all" onsubmit="return confirm('Approve all events?')">
@@ -944,6 +965,7 @@ def review_view(poster_id: str) -> str:
               <span class="pill">{_esc(poster['source_month'])}</span>
               <span class="pill accent">{len(events)} events</span>
               <span class="pill {status_class}">{status_label}</span>
+              {poster_conf_pill}
             </div>
             {image_html}
           </div>
@@ -1312,6 +1334,34 @@ def _poster_status(event_count: int, pending_count: int, rejected_count: int) ->
     return ("in review", "status-warn")
 
 
+def _format_confidence(score: float) -> str:
+    return f"{int(round(score * 100))}%"
+
+
+def _confidence_class(score: float) -> str:
+    if score >= 0.8:
+        return "status-good"
+    if score >= 0.6:
+        return "status-warn"
+    return "status-bad"
+
+
+def _confidence_badge(score: float | None) -> str:
+    if score is None:
+        return ""
+    label = _format_confidence(score)
+    klass = _confidence_class(score)
+    return f'<span class="badge conf {klass}">{label}</span>'
+
+
+def _confidence_pill(score: float | None) -> str:
+    if score is None:
+        return ""
+    label = _format_confidence(score)
+    klass = _confidence_class(score)
+    return f'<span class="pill {klass}">conf {label}</span>'
+
+
 def _format_datetime(value: str) -> str:
     try:
         cleaned = value.replace("Z", "")
@@ -1457,6 +1507,7 @@ def poster_view(poster_id: str) -> str:
         missing_text = f"Missing: {', '.join(missing)}" if missing else ""
         status = row["review_status"] or "pending"
         event_status_class = status if status in {"approved", "rejected"} else "pending"
+        conf_badge = _confidence_badge(row["confidence"])
 
         event_cards.append(
             f"""
@@ -1465,6 +1516,7 @@ def poster_view(poster_id: str) -> str:
               <div>
                 <div class="event-title">{_esc(title)}
                   <span class="badge {event_status_class}">{_esc(status)}</span>
+                  {conf_badge}
                 </div>
                 <div class="event-meta">{_esc(location or 'Location not set')}</div>
                 {f'<div class="event-meta missing">{missing_text}</div>' if missing_text else ''}
@@ -1507,6 +1559,7 @@ def poster_view(poster_id: str) -> str:
               <span class="pill">{_esc(poster['source_month'])}</span>
               <span class="pill accent">{len(events)} events</span>
               <span class="pill {status_class}">{status_label}</span>
+              {poster_conf_pill}
             </div>
             <p style="font-size: 13px; color: var(--muted);">Poster image</p>
             {image_html}
@@ -1609,6 +1662,7 @@ def update_event(event_id: str):
         """
     return_url = request.args.get("return") or f"/review/{poster_id}"
     title = event["event_name"] or event["venue"] or "Untitled event"
+    conf_pill = _confidence_pill(event["confidence"])
 
     return _render_page(
         f"""
@@ -1628,6 +1682,7 @@ def update_event(event_id: str):
         <div class="card">
           <h1>{_esc(title)}</h1>
           <p>Update fields, then approve or reject.</p>
+          {conf_pill}
           <form method="post">
             <input type="hidden" name="poster_id" value="{_esc(poster_id)}">
             <input type="hidden" name="return" value="{_esc(return_url)}">

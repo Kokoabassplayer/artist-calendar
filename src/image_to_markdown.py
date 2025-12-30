@@ -17,22 +17,24 @@ from config import Config
 # Define strict JSON schema for tour data extraction (database-ready)
 class TourEvent(TypedDict):
     date: str  # YYYY-MM-DD format (required)
-    event_name: Optional[str]  # Festival name, special show, etc.
-    venue: Optional[str]  # Bar, restaurant, club name
-    city: Optional[str]  # City in English
-    province: Optional[str]  # Thai province in English (e.g., "Chiang Mai")
+    event_name: Optional[str]  # Proofread event name
+    venue: Optional[str]  # Proofread venue
+    city: Optional[str]  # Proofread city
+    province: Optional[str]  # Proofread province
     country: str  # Default: "Thailand"
-    time: Optional[str]  # Show time if available (e.g., "21:00")
-    ticket_info: Optional[str]  # Price or ticket details
+    time: Optional[str]  # Normalized time
+    ticket_info: Optional[str]  # Proofread ticket info
     status: str  # "active" or "cancelled"
+    confidence: Optional[float]  # LLM confidence
 
 
 class TourData(TypedDict):
     artist_name: str  # Band/artist name
     instagram_handle: Optional[str]  # For artist identification (e.g., "scrubb_official")
-    tour_name: Optional[str]  # e.g., "December Tour 2024"
-    contact_info: Optional[str]  # Booking contact if visible
+    tour_name: Optional[str]  # Proofread tour name
+    contact_info: Optional[str]  # Proofread contact info
     source_month: str  # YYYY-MM for versioning (e.g., "2024-12")
+    poster_confidence: Optional[float]  # LLM confidence
     events: List[TourEvent]
 
 if not Config.GEMINI_API_KEY:
@@ -59,7 +61,7 @@ def image_to_markdown(image_path: str) -> Optional[str]:
     """Converts the provided image into Markdown format."""
     try:
         config = types.GenerateContentConfig(
-            temperature=0,
+            temperature=0.1,
             topP=0.95,
             topK=40,
             maxOutputTokens=8192,
@@ -235,26 +237,34 @@ def summarize_markdown_to_json_gemini(content: str) -> Union[TourData, str]:
         A TourData dictionary, or an empty dict string on error.
     """
     prompt = f"""
-    Extract tour data from this content:
-    - artist_name: Band/artist name
-    - tour_name: Tour title if visible (e.g., "December Tour 2024")
-    - contact_info: Booking contact if visible
+    Extract tour data from this content.
+    Keep text as close to the original as possible and apply light proofreading
+    (fix obvious OCR typos or spacing only; do not translate or expand abbreviations).
+
+    Fields:
+    - artist_name
+    - tour_name
+    - contact_info
+    - source_month (YYYY-MM)
+    - poster_confidence (0-1)
     - events: List of events with:
-      - date: YYYY-MM-DD format
-      - event_name: Festival or special event name
-      - venue: Bar, restaurant, club name
-      - city: City name in English
-      - province: Thai province in English
-      - country: Default "Thailand" unless foreign
-      - time: Show time if visible (e.g., "21:00")
-      - ticket_info: Price or ticket details if visible
+      - date (YYYY-MM-DD)
+      - event_name
+      - venue
+      - city
+      - province
+      - country (Default "Thailand" unless foreign)
+      - time (normalized HH:MM)
+      - ticket_info
+      - status (active/cancelled/postponed)
+      - confidence (0-1)
 
     Content:
     {content}
     """
 
     config = types.GenerateContentConfig(
-        temperature=0,
+        temperature=0.1,
         responseMimeType="application/json",
         responseSchema=TourData,
     )
