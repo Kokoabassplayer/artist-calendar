@@ -1,120 +1,114 @@
-# Import necessary modules
+import os
+import logging
+from typing import List, Optional
+import instaloader
+from dotenv import load_dotenv
+
+from config import Config
 from ig_scraper import GetInstagramProfile
 from tour_date_csv_utils import classify_images
 from image_to_markdown import csv_to_markdown_with_extracted_data
-import os
-from dotenv import load_dotenv
-import instaloader
+
+
+class TourDatePipeline:
+    def __init__(self, username: Optional[str] = None, password: Optional[str] = None):
+        """Initialize the pipeline with Instagram credentials."""
+        Config.setup_logging()
+        Config.validate()
+        
+        self.username = username or Config.INSTAGRAM_USERNAME
+        self.password = password or Config.INSTAGRAM_PASSWORD
+        self.loader = instaloader.Instaloader()
+        
+        self._login()
+
+    def _login(self):
+        """Authenticate with Instagram."""
+        try:
+            self.loader.login(self.username, self.password)
+            logging.info(f"Logged in as {self.username}")
+        except instaloader.exceptions.TwoFactorAuthRequiredException:
+            logging.warning("Two-factor authentication required.")
+            two_factor_code = input("Enter the 2FA code: ")
+            try:
+                self.loader.two_factor_login(two_factor_code)
+                logging.info(f"Logged in as {self.username} with 2FA.")
+            except instaloader.exceptions.BadCredentialsException:
+                logging.error("Invalid 2FA code. Exiting.")
+                exit(1)
+        except instaloader.exceptions.BadCredentialsException:
+            logging.error("Invalid username or password. Exiting.")
+            exit(1)
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during login: {e}")
+            exit(1)
+
+    def run(self, artist_profiles: List[str], since: str, until: str):
+        """Run the full extraction pipeline for a list of artists."""
+        
+        # Ensure base directories exist
+        for directory in [Config.RAW_CSV_DIR, Config.CLASSIFIED_CSV_DIR, Config.MARKDOWN_DIR]:
+            os.makedirs(directory, exist_ok=True)
+
+        scraper = GetInstagramProfile(self.loader)
+
+        for artist in artist_profiles:
+            try:
+                logging.info(f"Processing artist: {artist}")
+                self._process_artist(scraper, artist, since, until)
+            except Exception as e:
+                logging.error(f"Failed to process {artist}: {e}")
+                continue
+
+        logging.info("Pipeline completed for all profiles.")
+
+    def _process_artist(self, scraper: GetInstagramProfile, artist: str, since: str, until: str):
+        """Process a single artist: Scrape -> Classify -> Extract."""
+        
+        # Step 1: Scrape
+        logging.info(f"Step 1: Scraping Instagram posts for {artist}...")
+        raw_output_folder = Config.RAW_CSV_DIR / artist
+        os.makedirs(raw_output_folder, exist_ok=True)
+        
+        raw_csv_file = raw_output_folder / f"{artist}_{since}_to_{until}.csv"
+        
+        scraper.get_post_info_csv(
+            username=artist,
+            since=since,
+            until=until,
+            output_folder=str(raw_output_folder),
+        )
+        logging.info(f"Raw data saved to: {raw_csv_file}")
+
+        # Step 2: Classify
+        logging.info(f"Step 2: Classifying images for {artist}...")
+        classified_output_folder = Config.CLASSIFIED_CSV_DIR / artist
+        os.makedirs(classified_output_folder, exist_ok=True)
+        
+        classified_csv_file = classified_output_folder / f"{artist}_{since}_to_{until}_classified.csv"
+        
+        classify_images(
+            input_csv=str(raw_csv_file),
+            output_csv=str(classified_csv_file),
+            output_folder=str(classified_output_folder),
+        )
+        logging.info(f"Classified data saved to: {classified_csv_file}")
+
+        # Step 3: Extract Markdown
+        logging.info(f"Step 3: Extracting tour dates to Markdown for {artist}...")
+        markdown_output_file = Config.MARKDOWN_DIR / f"{artist}_{since}_to_{until}.md"
+        
+        csv_to_markdown_with_extracted_data(str(classified_csv_file))
+        logging.info(f"Markdown file saved to: {markdown_output_file}")
+
 
 if __name__ == "__main__":
-    # Initialize Instaloader and load credentials from environment
-    load_dotenv("/Users/kokoabassplayer/Desktop/python/.env")
-    loader = instaloader.Instaloader()
-    username = os.environ.get("IG_USERNAME")
-    password = os.environ.get("IG_PASSWORD")
-
-    if not username or not password:
-        print("Error: IG_USERNAME or IG_PASSWORD not set.")
-        exit(1)
-
-    try:
-        # Attempt to login
-        loader.login(username, password)
-        print(f"Logged in as {username}")
-    except instaloader.exceptions.TwoFactorAuthRequiredException:
-        # Handle 2FA
-        print("Two-factor authentication required.")
-        two_factor_code = input("Enter the 2FA code: ")
-        try:
-            loader.two_factor_login(two_factor_code)
-            print(f"Logged in as {username} with 2FA.")
-        except instaloader.exceptions.BadCredentialsException:
-            print("Invalid 2FA code. Exiting.")
-            exit(1)
-    except instaloader.exceptions.BadCredentialsException:
-        print("Invalid username or password. Exiting.")
-        exit(1)
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        exit(1)
-
-    # List of artist profiles to process
-    # artist_profiles = ["retrospect_official", "bowkylion", "sweetmullet", "palmy.ig"]
-    # artist_profiles = ["artistland"]
+    # Example usage
+    pipeline = TourDatePipeline()
+    
+    # Configuration
     artist_profiles = ["zealrockband"]
-    # artist_profiles = ["loveis_ent"]
+    since_date = "2024-11-20"
+    until_date = "2024-12-31"
 
-    # Date range for scraping
-    since = "2024-11-20"
-    until = "2024-12-31"
-
-    # Base folders for outputs
-    base_raw_folder = "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/raw"
-    base_classified_folder = (
-        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/CSV/classified"
-    )
-    base_markdown_folder = (
-        "/Users/kokoabassplayer/Desktop/python/ArtistCalendar/TourDateMarkdown"
-    )
-
-    # Ensure all base folders exist
-    os.makedirs(base_raw_folder, exist_ok=True)
-    os.makedirs(base_classified_folder, exist_ok=True)
-    os.makedirs(base_markdown_folder, exist_ok=True)
-
-    # Pass the authenticated loader to the scraper class
-    cls = GetInstagramProfile(loader)
-
-    for artist_username in artist_profiles:
-        try:
-            print(f"Processing artist: {artist_username}")
-
-            # Step 1: Scrape Instagram posts
-            print(f"Step 1: Scraping Instagram posts for {artist_username}...")
-            raw_output_folder = os.path.join(base_raw_folder, artist_username)
-            os.makedirs(raw_output_folder, exist_ok=True)
-
-            # Output CSV for raw data
-            raw_csv_file = os.path.join(
-                raw_output_folder, f"{artist_username}_{since}_to_{until}.csv"
-            )
-            cls.get_post_info_csv(
-                username=artist_username,
-                since=since,
-                until=until,
-                output_folder=raw_output_folder,
-            )
-            print(f"Raw data saved to: {raw_csv_file}")
-
-            # Step 2: Classify images as tour dates
-            print(f"Step 2: Classifying images for {artist_username}...")
-            classified_output_folder = os.path.join(
-                base_classified_folder, artist_username
-            )
-            os.makedirs(classified_output_folder, exist_ok=True)
-
-            # Output CSV for classified data
-            classified_csv_file = os.path.join(
-                classified_output_folder,
-                f"{artist_username}_{since}_to_{until}_classified.csv",
-            )
-            classify_images(
-                input_csv=raw_csv_file,
-                output_csv=classified_csv_file,
-                output_folder=classified_output_folder,
-            )
-            print(f"Classified data saved to: {classified_csv_file}")
-
-            # Step 3: Extract tour dates and generate Markdown
-            print(f"Step 3: Extracting tour dates to Markdown for {artist_username}...")
-            markdown_output_file = os.path.join(
-                base_markdown_folder, f"{artist_username}_{since}_to_{until}.md"
-            )
-            csv_to_markdown_with_extracted_data(classified_csv_file)
-            print(f"Markdown file saved to: {markdown_output_file}")
-
-        except Exception as e:
-            print(f"Failed to process {artist_username}: {e}")
-            continue  # Skip to the next artist
-
-    print("Pipeline completed for all profiles.")
+    pipeline.run(artist_profiles, since=since_date, until=until_date)
