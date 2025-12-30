@@ -1493,6 +1493,7 @@ def poster_view(poster_id: str) -> str:
     rejected_count = sum(1 for row in events if row["review_status"] == "rejected")
     status_label, status_class = _poster_status(len(events), pending_count, rejected_count)
     warning = _poster_image_warning(poster["image_url"], poster["source_url"], poster["raw_json"])
+    poster_conf_pill = _confidence_pill(poster["poster_confidence"])
     event_cards = []
     for row in events:
         title = row["event_name"] or row["venue"] or "Untitled event"
