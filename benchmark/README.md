@@ -146,6 +146,8 @@ Optional: cap judge output tokens:
 - Use `--timeout` to raise OpenRouter request timeout.
 - Use `--seed` to fix randomness (default: 23).
 - Report outputs include `comparisons.md` with bootstrap CIs for pairwise model deltas.
+- Structured outputs are enabled when a model supports `response_format` or `structured_outputs`.
+- Only models that accept image inputs will produce predictions; use `benchmark/models_vl.txt` to avoid text-only models.
 
 ## Scoring
 `app_quality_score` (0-100) is the primary performance axis for the scatter plot. It is a weighted mix:

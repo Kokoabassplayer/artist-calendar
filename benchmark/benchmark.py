@@ -69,6 +69,92 @@ QUALITY_WEIGHTS = {
     "event_count": 0.1,
 }
 MISSING_FIELD_PENALTY = 10.0
+POSTER_SCHEMA_NAME = "poster_extraction"
+JUDGE_SCHEMA_NAME = "judge_result"
+POSTER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "artist_name",
+        "instagram_handle",
+        "tour_name",
+        "contact_info",
+        "source_month",
+        "poster_confidence",
+        "events",
+    ],
+    "properties": {
+        "artist_name": {"type": "string"},
+        "instagram_handle": {"type": ["string", "null"]},
+        "tour_name": {"type": ["string", "null"]},
+        "contact_info": {"type": ["string", "null"]},
+        "source_month": {"type": "string", "pattern": r"^\d{4}-\d{2}$"},
+        "poster_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "events": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "date",
+                    "event_name",
+                    "venue",
+                    "city",
+                    "province",
+                    "country",
+                    "time",
+                    "ticket_info",
+                    "status",
+                    "confidence",
+                ],
+                "properties": {
+                    "date": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+                    "event_name": {"type": ["string", "null"]},
+                    "venue": {"type": ["string", "null"]},
+                    "city": {"type": ["string", "null"]},
+                    "province": {"type": ["string", "null"]},
+                    "country": {"type": "string"},
+                    "time": {
+                        "anyOf": [
+                            {"type": "null"},
+                            {"type": "string", "pattern": r"^\d{2}:\d{2}$"},
+                        ]
+                    },
+                    "ticket_info": {"type": ["string", "null"]},
+                    "status": {
+                        "type": "string",
+                        "enum": ["active", "cancelled", "postponed"],
+                    },
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+            },
+        },
+    },
+}
+JUDGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "overall_score",
+        "schema_ok",
+        "event_count_score",
+        "date_score",
+        "venue_score",
+        "location_score",
+        "missing_field_penalty",
+        "errors",
+    ],
+    "properties": {
+        "overall_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "schema_ok": {"type": "boolean"},
+        "event_count_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "date_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "venue_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "location_score": {"type": "number", "minimum": 0, "maximum": 100},
+        "missing_field_penalty": {"type": "number", "minimum": 0, "maximum": 100},
+        "errors": {"type": "array", "items": {"type": "string"}},
+    },
+}
 
 
 def _parse_max_tokens(value: Optional[str]) -> Optional[int]:
@@ -354,6 +440,26 @@ def _get_pricing(cache_path: Path) -> Dict[str, Dict[str, Any]]:
     return _fetch_openrouter_pricing(cache_path)
 
 
+def _openrouter_response_format(
+    model: str, schema_name: str, schema: Dict[str, Any], cache_path: Path
+) -> Tuple[Optional[Dict[str, Any]], bool]:
+    if not _model_supports_param(cache_path, model, "response_format"):
+        return None, False
+    if _model_supports_param(cache_path, model, "structured_outputs"):
+        return (
+            {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "schema": schema,
+                    "strict": True,
+                },
+            },
+            True,
+        )
+    return {"type": "json_object"}, False
+
+
 def _estimate_cost(
     pricing: Dict[str, Any],
     prompt_tokens: Optional[int],
@@ -378,6 +484,8 @@ def openrouter_chat(
     seed: Optional[int],
     timeout: float,
     pricing_cache: Path,
+    response_format: Optional[Dict[str, Any]] = None,
+    structured_outputs: bool = False,
 ) -> Tuple[str, Dict[str, Any]]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -406,6 +514,10 @@ def openrouter_chat(
         payload["max_tokens"] = resolved_max_tokens
     if seed is not None and _model_supports_param(pricing_cache, model, "seed"):
         payload["seed"] = seed
+    if response_format is not None and _model_supports_param(pricing_cache, model, "response_format"):
+        payload["response_format"] = response_format
+    if structured_outputs and _model_supports_param(pricing_cache, model, "structured_outputs"):
+        payload["structured_outputs"] = True
     start_time = time.time()
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -670,6 +782,9 @@ def command_ground_truth(args: argparse.Namespace) -> None:
         ]
         max_tokens = _resolve_max_output(args.max_output)
         try:
+            response_format, structured_outputs = _openrouter_response_format(
+                args.model, POSTER_SCHEMA_NAME, POSTER_SCHEMA, Path("benchmark/cache/openrouter_models.json")
+            )
             raw_text, meta = openrouter_chat(
                 model=args.model,
                 messages=messages,
@@ -678,6 +793,8 @@ def command_ground_truth(args: argparse.Namespace) -> None:
                 seed=args.seed,
                 timeout=args.timeout,
                 pricing_cache=Path("benchmark/cache/openrouter_models.json"),
+                response_format=response_format,
+                structured_outputs=structured_outputs,
             )
             _save_raw_and_json(out_dir, poster_id, raw_text, meta=meta)
         except Exception as exc:
@@ -761,6 +878,9 @@ def command_predict(args: argparse.Namespace) -> None:
                             ],
                         }
                     ]
+                    response_format, structured_outputs = _openrouter_response_format(
+                        name, POSTER_SCHEMA_NAME, POSTER_SCHEMA, Path("benchmark/cache/openrouter_models.json")
+                    )
                     raw_text, model_meta = openrouter_chat(
                         model=name,
                         messages=messages,
@@ -769,6 +889,8 @@ def command_predict(args: argparse.Namespace) -> None:
                         seed=args.seed,
                         timeout=args.timeout,
                         pricing_cache=Path("benchmark/cache/openrouter_models.json"),
+                        response_format=response_format,
+                        structured_outputs=structured_outputs,
                     )
                     meta = {
                         "requested_model": f"openrouter:{name}",
@@ -843,6 +965,9 @@ def command_judge(args: argparse.Namespace) -> None:
             messages = [{"role": "user", "content": judge_prompt}]
             max_tokens = _resolve_max_output(args.max_output)
             try:
+                response_format, structured_outputs = _openrouter_response_format(
+                    args.model, JUDGE_SCHEMA_NAME, JUDGE_SCHEMA, Path("benchmark/cache/openrouter_models.json")
+                )
                 raw_text, meta = openrouter_chat(
                     model=args.model,
                     messages=messages,
@@ -851,6 +976,8 @@ def command_judge(args: argparse.Namespace) -> None:
                     seed=args.seed,
                     timeout=args.timeout,
                     pricing_cache=Path("benchmark/cache/openrouter_models.json"),
+                    response_format=response_format,
+                    structured_outputs=structured_outputs,
                 )
                 _save_raw_and_json(model_out, poster_id, raw_text, meta=meta)
             except Exception as exc:
