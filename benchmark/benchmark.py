@@ -518,14 +518,42 @@ def openrouter_chat(
         payload["response_format"] = response_format
     if structured_outputs and _model_supports_param(pricing_cache, model, "structured_outputs"):
         payload["structured_outputs"] = True
+    def _post(request_payload: Dict[str, Any]) -> requests.Response:
+        return requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=request_payload,
+            timeout=timeout,
+        )
+
+    def _should_retry_without_format(resp: requests.Response) -> bool:
+        if resp.status_code != 400 or (response_format is None and not structured_outputs):
+            return False
+        try:
+            data = resp.json()
+        except Exception:
+            return False
+        err = data.get("error") or {}
+        msg = str(err.get("message", ""))
+        raw = ""
+        meta = err.get("metadata") or {}
+        if isinstance(meta, dict):
+            raw = str(meta.get("raw", ""))
+        text = f"{msg} {raw}".lower()
+        return "json mode is not enabled" in text or "response_format" in text or "structured_outputs" in text
+
     start_time = time.time()
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=timeout,
-    )
+    response = _post(payload)
     duration_sec = time.time() - start_time
+    response_format_fallback = False
+    if _should_retry_without_format(response):
+        payload.pop("response_format", None)
+        payload.pop("structured_outputs", None)
+        start_time = time.time()
+        response = _post(payload)
+        duration_sec = time.time() - start_time
+        response_format_fallback = True
+
     response.raise_for_status()
     data = response.json()
     if "error" in data:
@@ -558,6 +586,8 @@ def openrouter_chat(
         "duration_sec": round(duration_sec, 3),
         "request_id": response.headers.get("x-request-id"),
     }
+    if response_format_fallback:
+        meta["response_format_fallback"] = True
     if rate_limit:
         meta["rate_limit"] = rate_limit
     return data["choices"][0]["message"]["content"], meta
