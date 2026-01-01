@@ -32,3 +32,9 @@ benchmark/judgements/
 benchmark/report/
 benchmark/cache/
 benchmark/manifest.json
+benchmark/predictions_free/
+benchmark/judgements_free/
+benchmark/report_free/
+benchmark/predictions_openrouter/
+benchmark/judgements_openrouter/
+benchmark/report_openrouter/

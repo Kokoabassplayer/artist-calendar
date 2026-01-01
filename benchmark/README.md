@@ -6,9 +6,8 @@ It is designed to be reproducible and shareable.
 See `benchmark/PROTOCOL.md` for the evaluation methodology and `benchmark/DATASET_CARD.md` for dataset details.
 
 ## Prerequisites
-- `OPENROUTER_API_KEY` for ground truth + judge.
-- `GEMINI_API_KEY` for Gemma predictions (optional).
-- Ollama running locally for Qwen (`ollama serve`).
+- `OPENROUTER_API_KEY` for ground truth, predictions, and judge.
+- `GEMINI_API_KEY` only if you choose to run Google Gemini directly (optional).
 
 Optional environment variables:
 - `OPENROUTER_REFERER` and `OPENROUTER_TITLE` (for OpenRouter attribution).
@@ -16,13 +15,14 @@ Optional environment variables:
 
 ## Files and folders
 - `docs/test_poster_urls.txt`: source URL list.
-- `benchmark/models.txt`: default model list for predictions.
+- `benchmark/models.txt`: candidate OpenRouter model list (not all are vision-capable).
+- `benchmark/models_vl.txt`: vision-capable OpenRouter models for image predictions.
 - `benchmark/images/`: downloaded posters (ignored by git).
 - `benchmark/ground_truth/`: GPT-5.2 ground truth JSON (ignored by git).
-- `benchmark/predictions/`: model outputs (ignored by git).
-- `benchmark/judgements/`: judge scores (ignored by git).
-- `benchmark/report/`: aggregated report (ignored by git).
-- `benchmark/report/scatter.svg`: performance vs cost quadrant chart.
+- `benchmark/predictions_openrouter/`: model outputs (ignored by git).
+- `benchmark/judgements_openrouter/`: judge scores (ignored by git).
+- `benchmark/report_openrouter/`: aggregated report (ignored by git).
+- `benchmark/report_openrouter/scatter.svg`: performance vs cost quadrant chart.
 
 ## Workflow
 
@@ -52,41 +52,40 @@ If JSON is truncated, rerun only error cases with higher tokens:
   --retry-errors
 ```
 
-3) Run predictions:
+3) Run predictions (OpenRouter vision models):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
   --manifest benchmark/manifest.json \
-  --out benchmark/predictions \
-  --models ollama:qwen2.5vl:3b gemini:gemma-3-27b-it
+  --out benchmark/predictions_openrouter \
+  --models $(cat benchmark/models_vl.txt)
 ```
 
-Use the default model list file:
+Optional: run the full candidate list (expect some to fail if not vision-capable):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
   --manifest benchmark/manifest.json \
-  --out benchmark/predictions \
+  --out benchmark/predictions_openrouter \
   --models $(cat benchmark/models.txt)
 ```
 
-Optional: cap prediction output tokens (Gemini/Ollama):
+Optional: cap prediction output tokens (OpenRouter/Gemini):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
   --manifest benchmark/manifest.json \
-  --out benchmark/predictions \
-  --models ollama:qwen2.5vl:3b gemini:gemma-3-27b-it \
+  --out benchmark/predictions_openrouter \
+  --models $(cat benchmark/models_vl.txt) \
   --max-output 4096 \
-  --ollama-timeout 600 \
-  --ollama-context 16384
+  --timeout 300
 ```
 
-4) Judge predictions (OpenRouter Claude Sonnet 4.5):
+4) Judge predictions (OpenRouter free judge example):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py judge \
   --manifest benchmark/manifest.json \
   --ground-truth benchmark/ground_truth \
-  --predictions benchmark/predictions \
-  --out benchmark/judgements \
-  --model anthropic/claude-sonnet-4.5
+  --predictions benchmark/predictions_openrouter \
+  --out benchmark/judgements_openrouter \
+  --model openai/gpt-oss-120b:free
 ```
 
 Optional: cap judge output tokens:
@@ -94,9 +93,9 @@ Optional: cap judge output tokens:
 ./venv_artist/bin/python benchmark/benchmark.py judge \
   --manifest benchmark/manifest.json \
   --ground-truth benchmark/ground_truth \
-  --predictions benchmark/predictions \
-  --out benchmark/judgements \
-  --model anthropic/claude-sonnet-4.5 \
+  --predictions benchmark/predictions_openrouter \
+  --out benchmark/judgements_openrouter \
+  --model openai/gpt-oss-120b:free \
   --max-output 2048 \
   --timeout 300
 ```
@@ -106,24 +105,24 @@ Optional: cap judge output tokens:
 ./venv_artist/bin/python benchmark/benchmark.py report \
   --manifest benchmark/manifest.json \
   --ground-truth benchmark/ground_truth \
-  --predictions benchmark/predictions \
-  --judgements benchmark/judgements \
-  --out benchmark/report
+  --predictions benchmark/predictions_openrouter \
+  --judgements benchmark/judgements_openrouter \
+  --out benchmark/report_openrouter
 ```
 
 6) Generate cost/performance scatter plot:
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py plot \
-  --report benchmark/report/summary.json \
-  --out benchmark/report
+  --report benchmark/report_openrouter/summary.json \
+  --out benchmark/report_openrouter
 ```
 
 7) Generate a comprehensive narrative report:
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py interpret \
-  --report-dir benchmark/report \
-  --out benchmark/report/final_report.md \
-  --model openai/gpt-5.2 \
+  --report-dir benchmark/report_openrouter \
+  --out benchmark/report_openrouter/final_report.md \
+  --model openai/gpt-oss-120b:free \
   --max-output 4096 \
   --ground-truth-quality silver
 ```
@@ -131,7 +130,7 @@ Optional: cap judge output tokens:
 8) Publish a run (commit-ready):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py publish \
-  --report-dir benchmark/report \
+  --report-dir benchmark/report_openrouter \
   --out benchmark/published \
   --label baseline
 ```
@@ -143,9 +142,8 @@ Optional: cap judge output tokens:
 - `schema_valid_rate` checks required keys + basic formats; `schema_strict_rate` also forbids extra keys.
 - All model calls use temperature 0.1 (see `DEFAULT_TEMPERATURE` in `benchmark/benchmark.py`).
 - For OpenRouter steps, `--max-output max` uses the model's advertised max completion limit.
-- For Ollama predictions, default `--max-output half` uses half the model context length.
-- Use `--timeout` to raise OpenRouter request timeout; use `--ollama-timeout` for local Ollama requests.
-- Use `--ollama-context` to cap Ollama context length for speed; 8192–16384 is a good starting range.
+- For OpenRouter predictions, `--max-output max` uses the model's advertised completion limit.
+- Use `--timeout` to raise OpenRouter request timeout.
 - Use `--seed` to fix randomness (default: 23).
 - Report outputs include `comparisons.md` with bootstrap CIs for pairwise model deltas.
 

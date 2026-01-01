@@ -406,12 +406,14 @@ def openrouter_chat(
         payload["max_tokens"] = resolved_max_tokens
     if seed is not None and _model_supports_param(pricing_cache, model, "seed"):
         payload["seed"] = seed
+    start_time = time.time()
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers=headers,
         json=payload,
         timeout=timeout,
     )
+    duration_sec = time.time() - start_time
     response.raise_for_status()
     data = response.json()
     if "error" in data:
@@ -426,6 +428,12 @@ def openrouter_chat(
     pricing = pricing_data.get(model_id, {}).get("pricing", {})
     cost = _estimate_cost(pricing, prompt_tokens, completion_tokens)
 
+    rate_limit = {}
+    for key, value in response.headers.items():
+        lower = key.lower()
+        if lower.startswith("x-ratelimit") or lower.startswith("ratelimit") or lower == "retry-after":
+            rate_limit[key] = value
+
     meta = {
         "model": model_id,
         "prompt_tokens": prompt_tokens,
@@ -435,7 +443,11 @@ def openrouter_chat(
         "max_tokens": resolved_max_tokens,
         "seed": seed,
         "timeout_sec": timeout,
+        "duration_sec": round(duration_sec, 3),
+        "request_id": response.headers.get("x-request-id"),
     }
+    if rate_limit:
+        meta["rate_limit"] = rate_limit
     return data["choices"][0]["message"]["content"], meta
 
 
@@ -734,6 +746,38 @@ def command_predict(args: argparse.Namespace) -> None:
                     }
                     if model_meta:
                         meta.update(model_meta)
+                elif kind == "openrouter":
+                    max_output_tokens = _resolve_max_output(args.max_output, kind=kind, model=name)
+                    image_b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                                },
+                            ],
+                        }
+                    ]
+                    raw_text, model_meta = openrouter_chat(
+                        model=name,
+                        messages=messages,
+                        max_tokens=max_output_tokens,
+                        temperature=DEFAULT_TEMPERATURE,
+                        seed=args.seed,
+                        timeout=args.timeout,
+                        pricing_cache=Path("benchmark/cache/openrouter_models.json"),
+                    )
+                    meta = {
+                        "requested_model": f"openrouter:{name}",
+                        "seed": args.seed,
+                        "max_output_tokens": max_output_tokens,
+                        "timeout_sec": args.timeout,
+                    }
+                    if model_meta:
+                        meta.update(model_meta)
                 elif kind == "gemini":
                     max_output_tokens = _resolve_max_output(args.max_output, kind=kind, model=name)
                     raw_text, model_meta = gemini_chat(
@@ -848,8 +892,8 @@ def _date_metrics(gold: Any, pred: Any) -> Tuple[Optional[float], Optional[float
     pred_events = pred.get("events") or []
     gold_dates = [e.get("date") for e in gold_events if isinstance(e, dict)]
     pred_dates = [e.get("date") for e in pred_events if isinstance(e, dict)]
-    gold_dates = [d for d in gold_dates if isinstance(d, str) and re.match(r"^\\d{4}-\\d{2}-\\d{2}$", d)]
-    pred_dates = [d for d in pred_dates if isinstance(d, str) and re.match(r"^\\d{4}-\\d{2}-\\d{2}$", d)]
+    gold_dates = [d for d in gold_dates if isinstance(d, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", d)]
+    pred_dates = [d for d in pred_dates if isinstance(d, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", d)]
     if not gold_dates and not pred_dates:
         return None, None, None
     gold_counter = Counter(gold_dates)
@@ -889,7 +933,7 @@ def _schema_valid(data: Any, strict: bool = False) -> bool:
         if value is not None and not isinstance(value, str):
             return False
     source_month = data.get("source_month")
-    if not isinstance(source_month, str) or not re.match(r"^\\d{4}-\\d{2}$", source_month):
+    if not isinstance(source_month, str) or not re.match(r"^\d{4}-\d{2}$", source_month):
         return False
     if not isinstance(data.get("events"), list):
         return False
@@ -924,7 +968,7 @@ def _schema_valid(data: Any, strict: bool = False) -> bool:
             if not event_keys.issubset(event_key_set):
                 return False
         date = event.get("date")
-        if not isinstance(date, str) or not re.match(r"^\\d{4}-\\d{2}-\\d{2}$", date):
+        if not isinstance(date, str) or not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
             return False
         country = event.get("country")
         if not isinstance(country, str):
@@ -934,7 +978,7 @@ def _schema_valid(data: Any, strict: bool = False) -> bool:
             return False
         time_value = event.get("time")
         if time_value is not None:
-            if not isinstance(time_value, str) or not re.match(r"^\\d{2}:\\d{2}$", time_value):
+            if not isinstance(time_value, str) or not re.match(r"^\d{2}:\d{2}$", time_value):
                 return False
         for key in ("event_name", "venue", "city", "province", "ticket_info"):
             value = event.get(key)
@@ -1777,6 +1821,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Max output tokens for predictions (Gemini/Ollama). Use an int, 'max', or 'half' (Ollama only).",
     )
     predict.add_argument("--ollama-timeout", type=float, default=DEFAULT_OLLAMA_TIMEOUT)
+    predict.add_argument("--timeout", type=float, default=DEFAULT_OPENROUTER_TIMEOUT)
     predict.add_argument(
         "--ollama-context",
         type=int,

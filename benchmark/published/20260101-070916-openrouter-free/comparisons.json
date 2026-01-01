@@ -1,0 +1,13 @@
+[
+  {
+    "model_a": "openrouter-nvidia_nemotron-nano-12b-v2-vl_free",
+    "model_b": "openrouter-qwen_qwen-2.5-vl-7b-instruct_free",
+    "diff_mean": -2.888,
+    "ci95": [
+      -10.53,
+      3.598
+    ],
+    "p_value": 0.43,
+    "significant": false
+  }
+]
