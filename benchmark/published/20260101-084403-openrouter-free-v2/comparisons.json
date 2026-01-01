@@ -1,0 +1,167 @@
+[
+  {
+    "model_a": "openrouter-google_gemma-3-12b-it_free",
+    "model_b": "openrouter-google_gemma-3-27b-it_free",
+    "diff_mean": 53.722,
+    "ci95": [
+      45.451,
+      62.077
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-12b-it_free",
+    "model_b": "openrouter-google_gemma-3-4b-it_free",
+    "diff_mean": 17.229,
+    "ci95": [
+      12.079,
+      22.476
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-12b-it_free",
+    "model_b": "openrouter-mistralai_mistral-small-3.1-24b-instruct_free",
+    "diff_mean": 76.305,
+    "ci95": [
+      73.487,
+      79.298
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-12b-it_free",
+    "model_b": "openrouter-nvidia_nemotron-nano-12b-v2-vl_free",
+    "diff_mean": 8.295,
+    "ci95": [
+      2.354,
+      14.991
+    ],
+    "p_value": 0.01,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-12b-it_free",
+    "model_b": "openrouter-qwen_qwen-2.5-vl-7b-instruct_free",
+    "diff_mean": 5.407,
+    "ci95": [
+      -0.101,
+      10.638
+    ],
+    "p_value": 0.052,
+    "significant": false
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-27b-it_free",
+    "model_b": "openrouter-google_gemma-3-4b-it_free",
+    "diff_mean": -36.494,
+    "ci95": [
+      -46.627,
+      -25.733
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-27b-it_free",
+    "model_b": "openrouter-mistralai_mistral-small-3.1-24b-instruct_free",
+    "diff_mean": 22.582,
+    "ci95": [
+      14.028,
+      31.672
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-27b-it_free",
+    "model_b": "openrouter-nvidia_nemotron-nano-12b-v2-vl_free",
+    "diff_mean": -45.427,
+    "ci95": [
+      -55.087,
+      -34.62
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-27b-it_free",
+    "model_b": "openrouter-qwen_qwen-2.5-vl-7b-instruct_free",
+    "diff_mean": -48.316,
+    "ci95": [
+      -57.875,
+      -37.62
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-4b-it_free",
+    "model_b": "openrouter-mistralai_mistral-small-3.1-24b-instruct_free",
+    "diff_mean": 59.076,
+    "ci95": [
+      54.315,
+      63.69
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-4b-it_free",
+    "model_b": "openrouter-nvidia_nemotron-nano-12b-v2-vl_free",
+    "diff_mean": -8.934,
+    "ci95": [
+      -15.791,
+      -1.15
+    ],
+    "p_value": 0.018,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-google_gemma-3-4b-it_free",
+    "model_b": "openrouter-qwen_qwen-2.5-vl-7b-instruct_free",
+    "diff_mean": -11.822,
+    "ci95": [
+      -18.458,
+      -5.78
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-mistralai_mistral-small-3.1-24b-instruct_free",
+    "model_b": "openrouter-nvidia_nemotron-nano-12b-v2-vl_free",
+    "diff_mean": -68.01,
+    "ci95": [
+      -73.284,
+      -62.157
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-mistralai_mistral-small-3.1-24b-instruct_free",
+    "model_b": "openrouter-qwen_qwen-2.5-vl-7b-instruct_free",
+    "diff_mean": -70.898,
+    "ci95": [
+      -75.202,
+      -66.434
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "openrouter-nvidia_nemotron-nano-12b-v2-vl_free",
+    "model_b": "openrouter-qwen_qwen-2.5-vl-7b-instruct_free",
+    "diff_mean": -2.888,
+    "ci95": [
+      -10.53,
+      3.598
+    ],
+    "p_value": 0.43,
+    "significant": false
+  }
+]
