@@ -148,6 +148,7 @@ Optional: cap judge output tokens:
 - Report outputs include `comparisons.md` with bootstrap CIs for pairwise model deltas.
 - Structured outputs are enabled when a model supports `response_format` or `structured_outputs`.
 - Only models that accept image inputs will produce predictions; use `benchmark/models_vl.txt` to avoid text-only models.
+- `mistralai/mistral-small-3.1-24b-instruct:free` is disabled in `benchmark/models.txt` because the free tier has no image endpoints.
 
 ## Scoring
 `app_quality_score` (0-100) is the primary performance axis for the scatter plot. It is a weighted mix:
