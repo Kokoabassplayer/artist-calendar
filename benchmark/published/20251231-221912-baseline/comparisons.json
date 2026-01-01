@@ -1,0 +1,13 @@
+[
+  {
+    "model_a": "gemini-gemma-3-27b-it",
+    "model_b": "ollama-qwen2.5vl_3b",
+    "diff_mean": 2.824,
+    "ci95": [
+      -0.509,
+      6.688
+    ],
+    "p_value": 0.124,
+    "significant": false
+  }
+]

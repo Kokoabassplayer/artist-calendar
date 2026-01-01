@@ -1,0 +1,31 @@
+Extract structured tour data from the image.
+
+Return JSON only and follow this schema exactly:
+{
+  "artist_name": string,
+  "instagram_handle": string|null,
+  "tour_name": string|null,
+  "contact_info": string|null,
+  "source_month": "YYYY-MM",
+  "poster_confidence": number (0-1),
+  "events": [
+    {
+      "date": "YYYY-MM-DD",
+      "event_name": string|null,
+      "venue": string|null,
+      "city": string|null,
+      "province": string|null,
+      "country": string,
+      "time": "HH:MM"|null,
+      "ticket_info": string|null,
+      "status": "active"|"cancelled"|"postponed",
+      "confidence": number (0-1)
+    }
+  ]
+}
+
+Rules:
+- Use Thailand if country is not specified.
+- Keep text as written; do not translate or invent details.
+- If unsure, use null and lower confidence.
+- Do not include extra keys or markdown.

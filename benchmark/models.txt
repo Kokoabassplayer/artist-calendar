@@ -1,0 +1,2 @@
+ollama:qwen2.5vl:3b
+gemini:gemma-3-27b-it

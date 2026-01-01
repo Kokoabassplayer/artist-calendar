@@ -1,0 +1,23 @@
+You are writing a publishable benchmark report for the ArtistCalendar poster extraction evaluation.
+
+Requirements:
+- Use only the provided data (no guessing). If data is missing, say "not available".
+- Write in clear professional English.
+- Use Markdown headings.
+- Keep it comprehensive but concise (roughly 600-900 words).
+- Explicitly state the ground-truth quality level (gold/silver) and limitations.
+- Mention reproducibility: temperature, seed, and max output caps if available in Meta JSON.
+
+Structure:
+# Final Benchmark Report
+## Executive Summary
+## Dataset
+## Methodology
+## Results
+- Include a short table summarizing model, app_quality_score, total_cost_usd, schema_strict_rate.
+## Interpretation
+- Discuss accuracy vs cost tradeoffs and any statistically significant differences.
+## Limitations
+## Recommendations
+
+Focus on app readiness and structured output reliability.

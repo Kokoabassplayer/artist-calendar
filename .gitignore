@@ -23,3 +23,12 @@ venv_artist/
 output/
 backups/
 pipeline.log
+
+# Benchmark outputs
+benchmark/images/
+benchmark/ground_truth/
+benchmark/predictions/
+benchmark/judgements/
+benchmark/report/
+benchmark/cache/
+benchmark/manifest.json
