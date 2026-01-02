@@ -130,6 +130,14 @@ Optional: refine predictions with image + JSON (fills missing fields):
   --tokens-per-request 1000
 ```
 
+Optional: normalize province/city from existing fields:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py normalize \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it
+```
+
 Optional: enable OpenRouter plugins (web search + response healing):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \

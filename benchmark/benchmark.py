@@ -45,6 +45,7 @@ DEFAULT_OPENROUTER_TIMEOUT = 300
 DEFAULT_OLLAMA_TIMEOUT = 600
 DEFAULT_GEMINI_PROMPT_TOKENS = 2000
 DEFAULT_GEMINI_OUTPUT_TOKENS = 2000
+PROVINCE_DATA_PATH = Path("benchmark/data/th_provinces.json")
 BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_SEED = 23
 BOOTSTRAP_ALPHA = 0.05
@@ -273,6 +274,50 @@ class RateLimiter:
 def _estimate_gemini_tokens(max_output_tokens: Optional[int]) -> int:
     output_tokens = max_output_tokens if max_output_tokens is not None else DEFAULT_GEMINI_OUTPUT_TOKENS
     return max(1, output_tokens + DEFAULT_GEMINI_PROMPT_TOKENS)
+
+
+_PROVINCES_CACHE: Optional[List[Dict[str, Any]]] = None
+
+
+def _load_provinces() -> List[Dict[str, Any]]:
+    global _PROVINCES_CACHE
+    if _PROVINCES_CACHE is not None:
+        return _PROVINCES_CACHE
+    if not PROVINCE_DATA_PATH.exists():
+        _PROVINCES_CACHE = []
+        return _PROVINCES_CACHE
+    try:
+        data = json.loads(PROVINCE_DATA_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        _PROVINCES_CACHE = []
+        return _PROVINCES_CACHE
+    if not isinstance(data, list):
+        _PROVINCES_CACHE = []
+        return _PROVINCES_CACHE
+    _PROVINCES_CACHE = [item for item in data if isinstance(item, dict)]
+    return _PROVINCES_CACHE
+
+
+def _find_province_in_text(text: Any) -> Optional[str]:
+    if not isinstance(text, str) or not text.strip():
+        return None
+    provinces = _load_provinces()
+    if not provinces:
+        return None
+    for entry in provinces:
+        aliases = entry.get("aliases") or []
+        for alias in aliases:
+            if not isinstance(alias, str) or not alias:
+                continue
+            if alias.isascii():
+                pattern = r"\\b" + re.escape(alias) + r"\\b"
+                match = re.search(pattern, text, flags=re.IGNORECASE)
+                if match:
+                    return text[match.start() : match.end()]
+            else:
+                if alias in text:
+                    return alias
+    return None
 
 
 def read_lines(path: Path) -> List[str]:
@@ -956,6 +1001,38 @@ def _needs_refine(pred: Any) -> bool:
     return False
 
 
+def _normalize_locations(pred: Any) -> bool:
+    if not isinstance(pred, dict):
+        return False
+    events = pred.get("events") or []
+    if not isinstance(events, list):
+        return False
+    changed = False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        province = event.get("province")
+        city = event.get("city")
+        filled_province = False
+        if _is_blank(province):
+            match = None
+            if isinstance(city, str):
+                match = _find_province_in_text(city)
+            if match is None:
+                for field in ("venue", "event_name", "ticket_info"):
+                    match = _find_province_in_text(event.get(field))
+                    if match:
+                        break
+            if match:
+                event["province"] = match
+                filled_province = True
+                changed = True
+        if filled_province and _is_blank(event.get("city")):
+            event["city"] = event.get("province")
+            changed = True
+    return changed
+
+
 def command_ground_truth(args: argparse.Namespace) -> None:
     prompt = read_prompt(Path(args.prompt))
     entries = load_manifest(Path(args.manifest))
@@ -1416,6 +1493,33 @@ def command_refine(args: argparse.Namespace) -> None:
                 lambda entry: _refine_entry(model_dir, entry),
                 iter_entries(entries, args.start, args.limit),
             )
+
+
+def command_normalize(args: argparse.Namespace) -> None:
+    entries = load_manifest(Path(args.manifest))
+    pred_root = Path(args.predictions)
+    if args.model_dir:
+        model_dirs = [Path(args.model_dir)]
+    else:
+        model_dirs = [p for p in sorted(pred_root.iterdir()) if p.is_dir()]
+    if not model_dirs:
+        return
+    for model_dir in model_dirs:
+        if not model_dir.exists():
+            continue
+        for entry in iter_entries(entries, args.start, args.limit):
+            if entry.get("status") != "ok":
+                continue
+            poster_id = entry["id"]
+            json_path = model_dir / f"{poster_id}.json"
+            if not json_path.exists():
+                continue
+            pred = _load_json(json_path)
+            if not isinstance(pred, dict):
+                continue
+            changed = _normalize_locations(pred)
+            if changed or args.force:
+                json_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def command_judge(args: argparse.Namespace) -> None:
@@ -2523,6 +2627,15 @@ def build_parser() -> argparse.ArgumentParser:
     refine.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
     refine.add_argument("--force", action="store_true", help="Force refinement even if not needed.")
     refine.set_defaults(func=command_refine)
+
+    normalize = sub.add_parser("normalize", help="Normalize locations in prediction JSON.")
+    normalize.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    normalize.add_argument("--predictions", required=True, help="Predictions root directory.")
+    normalize.add_argument("--model-dir", help="Specific model directory to normalize.")
+    normalize.add_argument("--limit", type=int, help="Limit number of posters.")
+    normalize.add_argument("--start", type=int, default=0, help="Start index.")
+    normalize.add_argument("--force", action="store_true", help="Write outputs even if unchanged.")
+    normalize.set_defaults(func=command_normalize)
 
     judge = sub.add_parser("judge", help="Judge predictions with OpenRouter.")
     judge.add_argument("--manifest", required=True, help="Manifest JSON path.")
