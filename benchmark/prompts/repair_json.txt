@@ -36,7 +36,7 @@ Rules:
 - country must be a string; default to "Thailand" if missing.
 - status must be active, cancelled, or postponed; if missing, use "active".
 - time must be HH:MM or null.
-- If time is a range or not exactly HH:MM (e.g., "16:00-16.45"), set it to null.
+- If time is a range, use the start time if it can be normalized to HH:MM; otherwise set it to null.
 - poster_confidence and confidence must be numbers between 0 and 1; if missing, use 0.5.
 - Do not change text casing or wording except to fix formatting.
 
