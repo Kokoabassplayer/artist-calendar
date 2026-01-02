@@ -9,12 +9,14 @@ import re
 import shutil
 import statistics
 import subprocess
+import threading
 import time
-from collections import Counter
+from collections import Counter, deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -41,6 +43,8 @@ DEFAULT_TEMPERATURE = 0.2
 DEFAULT_SEED = 23
 DEFAULT_OPENROUTER_TIMEOUT = 300
 DEFAULT_OLLAMA_TIMEOUT = 600
+DEFAULT_GEMINI_PROMPT_TOKENS = 2000
+DEFAULT_GEMINI_OUTPUT_TOKENS = 2000
 BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_SEED = 23
 BOOTSTRAP_ALPHA = 0.05
@@ -225,6 +229,50 @@ def _resolve_max_output(
                 return max(1, length // 2)
         return None
     return _parse_max_tokens(value)
+
+
+class RateLimiter:
+    def __init__(self, rpm: Optional[int] = None, tpm: Optional[int] = None, tokens_per_request: Optional[int] = None):
+        self.rpm = rpm
+        self.tpm = tpm
+        self.tokens_per_request = tokens_per_request
+        self._lock = threading.Lock()
+        self._request_times: Deque[float] = deque()
+        self._token_times: Deque[Tuple[float, int]] = deque()
+
+    def acquire(self, tokens: Optional[int] = None) -> None:
+        if self.rpm is None and self.tpm is None:
+            return
+        token_cost = tokens if tokens is not None else self.tokens_per_request
+        while True:
+            now = time.monotonic()
+            with self._lock:
+                window = 60.0
+                while self._request_times and now - self._request_times[0] >= window:
+                    self._request_times.popleft()
+                while self._token_times and now - self._token_times[0][0] >= window:
+                    self._token_times.popleft()
+                token_sum = sum(cost for _, cost in self._token_times) if self.tpm and token_cost else 0
+                rpm_ok = self.rpm is None or len(self._request_times) < self.rpm
+                tpm_ok = self.tpm is None or token_cost is None or (token_sum + token_cost) <= self.tpm
+                if rpm_ok and tpm_ok:
+                    self._request_times.append(now)
+                    if self.tpm and token_cost is not None:
+                        self._token_times.append((now, token_cost))
+                    return
+                wait_rpm = 0.0
+                wait_tpm = 0.0
+                if self.rpm is not None and len(self._request_times) >= self.rpm:
+                    wait_rpm = window - (now - self._request_times[0])
+                if self.tpm is not None and token_cost is not None and token_sum + token_cost > self.tpm:
+                    wait_tpm = window - (now - self._token_times[0][0])
+                wait_for = max(wait_rpm, wait_tpm, 0.05)
+            time.sleep(wait_for)
+
+
+def _estimate_gemini_tokens(max_output_tokens: Optional[int]) -> int:
+    output_tokens = max_output_tokens if max_output_tokens is not None else DEFAULT_GEMINI_OUTPUT_TOKENS
+    return max(1, output_tokens + DEFAULT_GEMINI_PROMPT_TOKENS)
 
 
 def read_lines(path: Path) -> List[str]:
@@ -966,6 +1014,77 @@ def command_predict(args: argparse.Namespace) -> None:
     for kind, name in model_specs:
         model_dir = out_dir / safe_name(f"{kind}-{name}")
         model_dir.mkdir(parents=True, exist_ok=True)
+        if kind == "gemini" and (args.parallel > 1 or args.rpm or args.tpm):
+            max_output_tokens = _resolve_max_output(args.max_output, kind=kind, model=name)
+            tokens_estimate = args.tokens_per_request
+            if tokens_estimate is None and (args.rpm or args.tpm):
+                tokens_estimate = _estimate_gemini_tokens(max_output_tokens)
+            rate_limiter = None
+            if args.rpm or args.tpm:
+                rate_limiter = RateLimiter(args.rpm, args.tpm, tokens_estimate)
+
+            def _predict_gemini_entry(entry: Dict[str, Any]) -> None:
+                if entry.get("status") != "ok":
+                    return
+                poster_id = entry["id"]
+                json_path = model_dir / f"{poster_id}.json"
+                if json_path.exists() and not args.force:
+                    return
+                image_path = Path(entry["image_path"])
+                if not image_path.exists():
+                    return
+                if rate_limiter:
+                    rate_limiter.acquire(tokens_estimate)
+                try:
+                    raw_text, model_meta = gemini_chat(
+                        f"models/{name}" if not name.startswith("models/") else name,
+                        prompt,
+                        image_path,
+                        DEFAULT_TEMPERATURE,
+                        args.seed,
+                        max_output_tokens,
+                    )
+                    meta = {
+                        "model": f"gemini:{name}",
+                        "estimated_cost_usd": 0,
+                        "seed": args.seed,
+                        "max_output_tokens": max_output_tokens,
+                    }
+                    if model_meta:
+                        meta.update(model_meta)
+                    repair_fn = None
+                    if repair_prompt:
+                        def _repair(raw: str) -> Tuple[str, Dict[str, Any]]:
+                            repair_text, repair_meta = gemini_repair_json(
+                                f"models/{name}" if not name.startswith("models/") else name,
+                                repair_prompt,
+                                raw,
+                                DEFAULT_TEMPERATURE,
+                                args.seed,
+                                max_output_tokens,
+                            )
+                            meta_out = {
+                                "model": f"gemini:{name}",
+                                "seed": args.seed,
+                                "max_output_tokens": max_output_tokens,
+                            }
+                            if repair_meta:
+                                meta_out.update(repair_meta)
+                            return repair_text, meta_out
+                        repair_fn = _repair
+                    _save_raw_and_json_with_repair(model_dir, poster_id, raw_text, meta=meta, repair_fn=repair_fn)
+                except Exception as exc:
+                    error_path = model_dir / f"{poster_id}.error.json"
+                    error_path.write_text(
+                        json.dumps({"request_error": str(exc), "image_path": str(image_path)}, indent=2),
+                        encoding="utf-8",
+                    )
+                if args.sleep:
+                    time.sleep(args.sleep)
+
+            with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
+                list(executor.map(_predict_gemini_entry, iter_entries(entries, args.start, args.limit)))
+            continue
         for entry in iter_entries(entries, args.start, args.limit):
             if entry.get("status") != "ok":
                 continue
@@ -2125,6 +2244,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--repair-prompt",
         default="benchmark/prompts/repair_json.txt",
         help="Prompt file used for JSON repair.",
+    )
+    predict.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        help="Parallel workers for Gemini predictions.",
+    )
+    predict.add_argument(
+        "--rpm",
+        type=int,
+        help="Requests per minute limit for Gemini predictions.",
+    )
+    predict.add_argument(
+        "--tpm",
+        type=int,
+        help="Tokens per minute limit for Gemini predictions.",
+    )
+    predict.add_argument(
+        "--tokens-per-request",
+        type=int,
+        help="Estimated tokens per Gemini request (used with --tpm).",
     )
     predict.add_argument(
         "--ollama-context",
