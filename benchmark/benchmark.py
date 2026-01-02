@@ -1213,6 +1213,106 @@ def command_predict(args: argparse.Namespace) -> None:
                 time.sleep(args.sleep)
 
 
+def command_repair(args: argparse.Namespace) -> None:
+    prompt = read_prompt(Path(args.prompt))
+    entries = load_manifest(Path(args.manifest))
+    pred_root = Path(args.predictions)
+    if args.model_dir:
+        model_dirs = [Path(args.model_dir)]
+    else:
+        model_dirs = [p for p in sorted(pred_root.iterdir()) if p.is_dir()]
+    if not model_dirs:
+        return
+    max_output_tokens = _resolve_max_output(args.max_output, kind="gemini", model=args.model)
+    tokens_estimate = args.tokens_per_request
+    if tokens_estimate is None and (args.rpm or args.tpm):
+        tokens_estimate = _estimate_gemini_tokens(max_output_tokens)
+    rate_limiter = None
+    if args.rpm or args.tpm:
+        rate_limiter = RateLimiter(args.rpm, args.tpm, tokens_estimate)
+
+    def _repair_entry(model_dir: Path, entry: Dict[str, Any]) -> None:
+        if entry.get("status") != "ok":
+            return
+        poster_id = entry["id"]
+        raw_path = model_dir / f"{poster_id}.raw.txt"
+        if not raw_path.exists():
+            return
+        json_path = model_dir / f"{poster_id}.json"
+        error_path = model_dir / f"{poster_id}.error.json"
+        if json_path.exists() and not args.force:
+            pred = _load_json(json_path)
+            if isinstance(pred, dict) and _schema_valid(pred, strict=True):
+                if error_path.exists():
+                    error_path.unlink()
+                return
+
+        raw_text = raw_path.read_text(encoding="utf-8")
+        parsed = extract_json(raw_text)
+        if parsed is not None and _schema_valid(parsed, strict=True) and not args.force:
+            json_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+            if error_path.exists():
+                error_path.unlink()
+            return
+
+        if rate_limiter:
+            rate_limiter.acquire(tokens_estimate)
+        try:
+            repair_text, repair_meta = gemini_repair_json(
+                f"models/{args.model}" if not args.model.startswith("models/") else args.model,
+                prompt,
+                raw_text,
+                DEFAULT_TEMPERATURE,
+                args.seed,
+                max_output_tokens,
+            )
+        except Exception as exc:
+            error_path.write_text(
+                json.dumps({"repair_error": str(exc), "raw_path": str(raw_path)}, indent=2),
+                encoding="utf-8",
+            )
+            return
+
+        repair_raw_path = model_dir / f"{poster_id}.repair.raw.txt"
+        repair_raw_path.write_text(repair_text, encoding="utf-8")
+        if repair_meta:
+            repair_meta_path = model_dir / f"{poster_id}.repair.meta.json"
+            meta_out = {
+                "model": f"gemini:{args.model}",
+                "seed": args.seed,
+                "max_output_tokens": max_output_tokens,
+            }
+            meta_out.update(repair_meta)
+            repair_meta_path.write_text(json.dumps(meta_out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        repaired = extract_json(repair_text)
+        if repaired is not None and _schema_valid(repaired, strict=True):
+            json_path.write_text(json.dumps(repaired, ensure_ascii=False, indent=2), encoding="utf-8")
+            if error_path.exists():
+                error_path.unlink()
+        else:
+            error_payload: Dict[str, Any] = {
+                "raw_path": str(raw_path),
+                "repair_raw_path": str(repair_raw_path),
+            }
+            if repaired is None:
+                error_payload["repair_parse_error"] = "invalid_json"
+            else:
+                error_payload["repair_schema_error"] = "strict_schema_invalid"
+            error_path.write_text(json.dumps(error_payload, indent=2), encoding="utf-8")
+        if args.sleep:
+            time.sleep(args.sleep)
+
+    for model_dir in model_dirs:
+        if not model_dir.exists():
+            continue
+        with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
+            executor.map(
+                lambda entry: _repair_entry(model_dir, entry),
+                iter_entries(entries, args.start, args.limit),
+            )
+
+
 def command_judge(args: argparse.Namespace) -> None:
     prompt = read_prompt(Path(args.prompt))
     entries = load_manifest(Path(args.manifest))
@@ -2274,6 +2374,28 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
     predict.add_argument("--force", action="store_true", help="Overwrite existing outputs.")
     predict.set_defaults(func=command_predict)
+
+    repair = sub.add_parser("repair", help="Repair prediction JSON using Gemini.")
+    repair.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    repair.add_argument("--predictions", required=True, help="Predictions root directory.")
+    repair.add_argument("--model", required=True, help="Gemini model ID for repair.")
+    repair.add_argument("--model-dir", help="Specific model directory to repair.")
+    repair.add_argument("--prompt", default="benchmark/prompts/repair_json.txt")
+    repair.add_argument("--limit", type=int, help="Limit number of posters.")
+    repair.add_argument("--start", type=int, default=0, help="Start index.")
+    repair.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    repair.add_argument(
+        "--max-output",
+        default="max",
+        help="Max output tokens for repair (Gemini). Use an int or 'max'.",
+    )
+    repair.add_argument("--parallel", type=int, default=4, help="Parallel workers for repair.")
+    repair.add_argument("--rpm", type=int, help="Requests per minute limit for repair.")
+    repair.add_argument("--tpm", type=int, help="Tokens per minute limit for repair.")
+    repair.add_argument("--tokens-per-request", type=int, help="Estimated tokens per repair request.")
+    repair.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
+    repair.add_argument("--force", action="store_true", help="Force repair even if schema is valid.")
+    repair.set_defaults(func=command_repair)
 
     judge = sub.add_parser("judge", help="Judge predictions with OpenRouter.")
     judge.add_argument("--manifest", required=True, help="Manifest JSON path.")

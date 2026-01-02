@@ -97,11 +97,23 @@ Optional: run Gemini in parallel with rate limits:
   --manifest benchmark/manifest.json \
   --out benchmark/runs/$RUN_ID/predictions \
   --models gemini:gemma-3-27b-it \
-  --repair-json \
   --parallel 4 \
   --rpm 30 \
   --tpm 15000 \
   --tokens-per-request 2500
+```
+
+Optional: repair strict-schema JSON after predictions:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py repair \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --model gemma-3-27b-it \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --parallel 4 \
+  --rpm 30 \
+  --tpm 15000 \
+  --tokens-per-request 1000
 ```
 
 Optional: enable OpenRouter plugins (web search + response healing):
