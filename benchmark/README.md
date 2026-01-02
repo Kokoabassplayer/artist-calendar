@@ -81,6 +81,25 @@ Optional: cap prediction output tokens (OpenRouter/Gemini):
   --timeout 300
 ```
 
+Optional: repair JSON to strict schema (Gemini predictions):
+```bash
+./venv_artist/bin/python benchmark/benchmark.py predict \
+  --manifest benchmark/manifest.json \
+  --out benchmark/runs/$RUN_ID/predictions \
+  --models gemini:gemma-3-27b-it \
+  --repair-json \
+  --repair-prompt benchmark/prompts/repair_json.txt
+```
+
+Optional: enable OpenRouter plugins (web search + response healing):
+```bash
+./venv_artist/bin/python benchmark/benchmark.py predict \
+  --manifest benchmark/manifest.json \
+  --out benchmark/runs/$RUN_ID/predictions \
+  --models $(cat benchmark/models_vl.txt) \
+  --openrouter-plugins '[{"id":"web","max_results":3},{"id":"response-healing"}]'
+```
+
 4) Judge predictions (OpenRouter free judge example):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py judge \

@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -190,6 +190,20 @@ def _ollama_context_length(model: str) -> Optional[int]:
     length = int(match.group(1))
     _OLLAMA_CONTEXT_CACHE[model] = length
     return length
+
+
+def _load_plugins_config(value: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+    if not value:
+        return None
+    text = value
+    if Path(value).exists():
+        text = Path(value).read_text(encoding="utf-8")
+    plugins = json.loads(text)
+    if isinstance(plugins, dict) and "plugins" in plugins:
+        plugins = plugins["plugins"]
+    if not isinstance(plugins, list):
+        raise ValueError("OpenRouter plugins must be a JSON array or an object with a 'plugins' array.")
+    return plugins
 
 
 def _resolve_max_output(
@@ -486,6 +500,7 @@ def openrouter_chat(
     pricing_cache: Path,
     response_format: Optional[Dict[str, Any]] = None,
     structured_outputs: bool = False,
+    plugins: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -518,6 +533,8 @@ def openrouter_chat(
         payload["response_format"] = response_format
     if structured_outputs and _model_supports_param(pricing_cache, model, "structured_outputs"):
         payload["structured_outputs"] = True
+    if plugins:
+        payload["plugins"] = plugins
     def _post(request_payload: Dict[str, Any]) -> requests.Response:
         return requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -689,6 +706,49 @@ def gemini_chat(
     return text, meta
 
 
+def gemini_repair_json(
+    model: str,
+    prompt: str,
+    raw_text: str,
+    temperature: float,
+    seed: Optional[int],
+    max_output_tokens: Optional[int],
+) -> Tuple[str, Dict[str, Any]]:
+    if genai is None or types is None:
+        raise RuntimeError("google-genai is not available.")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set.")
+    client = genai.Client(api_key=api_key)
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        seed=seed,
+        max_output_tokens=max_output_tokens,
+    )
+    repair_prompt = f"{prompt}\n{raw_text}\n"
+    response = client.models.generate_content(model=model, contents=[repair_prompt], config=config)
+    text = response.text or ""
+    usage = getattr(response, "usage_metadata", None)
+    prompt_tokens = None
+    completion_tokens = None
+    total_tokens = None
+    if usage is not None:
+        if isinstance(usage, dict):
+            prompt_tokens = usage.get("prompt_token_count")
+            completion_tokens = usage.get("candidates_token_count")
+            total_tokens = usage.get("total_token_count")
+        else:
+            prompt_tokens = getattr(usage, "prompt_token_count", None)
+            completion_tokens = getattr(usage, "candidates_token_count", None)
+            total_tokens = getattr(usage, "total_token_count", None)
+    meta = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+    return text, meta
+
+
 def iter_entries(entries: List[Dict[str, Any]], start: int, limit: Optional[int]) -> Iterable[Dict[str, Any]]:
     sliced = entries[start:]
     if limit is not None:
@@ -773,6 +833,56 @@ def _save_raw_and_json(
     return raw_path, parsed
 
 
+def _save_raw_and_json_with_repair(
+    out_dir: Path,
+    poster_id: str,
+    raw_text: str,
+    meta: Optional[Dict[str, Any]] = None,
+    repair_fn: Optional[Callable[[str], Tuple[str, Dict[str, Any]]]] = None,
+) -> Tuple[Path, Optional[Any]]:
+    raw_path, parsed = _save_raw_and_json(out_dir, poster_id, raw_text, meta=meta)
+    if repair_fn is None:
+        return raw_path, parsed
+    if parsed is not None and _schema_valid(parsed, strict=True):
+        return raw_path, parsed
+
+    try:
+        repair_text, repair_meta = repair_fn(raw_text)
+    except Exception as exc:
+        repair_error_path = out_dir / f"{poster_id}.repair.error.json"
+        repair_error_path.write_text(
+            json.dumps({"repair_error": str(exc), "raw_path": str(raw_path)}, indent=2),
+            encoding="utf-8",
+        )
+        return raw_path, parsed
+
+    repair_raw_path = out_dir / f"{poster_id}.repair.raw.txt"
+    repair_raw_path.write_text(repair_text, encoding="utf-8")
+    if repair_meta:
+        repair_meta_path = out_dir / f"{poster_id}.repair.meta.json"
+        repair_meta_path.write_text(json.dumps(repair_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    repaired = extract_json(repair_text)
+    if repaired is not None and _schema_valid(repaired, strict=True):
+        json_path = out_dir / f"{poster_id}.json"
+        json_path.write_text(json.dumps(repaired, ensure_ascii=False, indent=2), encoding="utf-8")
+        error_path = out_dir / f"{poster_id}.error.json"
+        if error_path.exists():
+            error_path.unlink()
+        return raw_path, repaired
+
+    error_payload: Dict[str, Any] = {"raw_path": str(raw_path), "repair_raw_path": str(repair_raw_path)}
+    if parsed is None:
+        error_payload["parse_error"] = "invalid_json"
+    if repaired is None:
+        error_payload["repair_parse_error"] = "invalid_json"
+    else:
+        error_payload["repair_schema_error"] = "strict_schema_invalid"
+    error_path = out_dir / f"{poster_id}.error.json"
+    error_path.write_text(json.dumps(error_payload, indent=2), encoding="utf-8")
+    return raw_path, parsed
+
+
 def _save_text_with_meta(out_path: Path, text: str, meta: Optional[Dict[str, Any]] = None) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(text, encoding="utf-8")
@@ -846,10 +956,12 @@ def _parse_model_spec(spec: str) -> Tuple[str, str]:
 
 def command_predict(args: argparse.Namespace) -> None:
     prompt = read_prompt(Path(args.prompt))
+    repair_prompt = read_prompt(Path(args.repair_prompt)) if args.repair_json else None
     entries = load_manifest(Path(args.manifest))
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     model_specs = [_parse_model_spec(spec) for spec in args.models]
+    plugins = _load_plugins_config(args.openrouter_plugins)
 
     for kind, name in model_specs:
         model_dir = out_dir / safe_name(f"{kind}-{name}")
@@ -866,6 +978,7 @@ def command_predict(args: argparse.Namespace) -> None:
                 continue
 
             try:
+                repair_fn = None
                 if kind == "ollama":
                     max_output_tokens = _resolve_max_output(
                         args.max_output,
@@ -921,6 +1034,7 @@ def command_predict(args: argparse.Namespace) -> None:
                         pricing_cache=Path("benchmark/cache/openrouter_models.json"),
                         response_format=response_format,
                         structured_outputs=structured_outputs,
+                        plugins=plugins,
                     )
                     meta = {
                         "requested_model": f"openrouter:{name}",
@@ -948,9 +1062,28 @@ def command_predict(args: argparse.Namespace) -> None:
                     }
                     if model_meta:
                         meta.update(model_meta)
+                    if repair_prompt:
+                        def _repair(raw: str) -> Tuple[str, Dict[str, Any]]:
+                            repair_text, repair_meta = gemini_repair_json(
+                                f"models/{name}" if not name.startswith("models/") else name,
+                                repair_prompt,
+                                raw,
+                                DEFAULT_TEMPERATURE,
+                                args.seed,
+                                max_output_tokens,
+                            )
+                            meta_out = {
+                                "model": f"gemini:{name}",
+                                "seed": args.seed,
+                                "max_output_tokens": max_output_tokens,
+                            }
+                            if repair_meta:
+                                meta_out.update(repair_meta)
+                            return repair_text, meta_out
+                        repair_fn = _repair
                 else:
                     raise ValueError(f"Unknown model kind: {kind}")
-                _save_raw_and_json(model_dir, poster_id, raw_text, meta=meta)
+                _save_raw_and_json_with_repair(model_dir, poster_id, raw_text, meta=meta, repair_fn=repair_fn)
             except Exception as exc:
                 error_path = model_dir / f"{poster_id}.error.json"
                 error_path.write_text(
@@ -1979,6 +2112,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     predict.add_argument("--ollama-timeout", type=float, default=DEFAULT_OLLAMA_TIMEOUT)
     predict.add_argument("--timeout", type=float, default=DEFAULT_OPENROUTER_TIMEOUT)
+    predict.add_argument(
+        "--openrouter-plugins",
+        help="JSON array (or file path) of OpenRouter plugins to enable for predictions.",
+    )
+    predict.add_argument(
+        "--repair-json",
+        action="store_true",
+        help="Attempt JSON repair for schema-strict output (Gemini predictions).",
+    )
+    predict.add_argument(
+        "--repair-prompt",
+        default="benchmark/prompts/repair_json.txt",
+        help="Prompt file used for JSON repair.",
+    )
     predict.add_argument(
         "--ollama-context",
         type=int,

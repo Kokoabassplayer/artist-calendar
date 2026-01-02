@@ -1,0 +1,42 @@
+You are fixing a malformed or schema-invalid JSON extraction for a tour poster.
+
+Output JSON only. No markdown or code fences.
+
+Schema:
+{
+  "artist_name": string,
+  "instagram_handle": string|null,
+  "tour_name": string|null,
+  "contact_info": string|null,
+  "source_month": "YYYY-MM",
+  "poster_confidence": number (0-1),
+  "events": [
+    {
+      "date": "YYYY-MM-DD",
+      "event_name": string|null,
+      "venue": string|null,
+      "city": string|null,
+      "province": string|null,
+      "country": string,
+      "time": "HH:MM"|null,
+      "ticket_info": string|null,
+      "status": "active"|"cancelled"|"postponed",
+      "confidence": number (0-1)
+    }
+  ]
+}
+
+Rules:
+- Keep existing values when valid; do not invent new information.
+- Remove any extra keys not in the schema.
+- Ensure required keys exist. For missing required strings, use "".
+- For optional strings, use null when unknown.
+- source_month must be YYYY-MM. If missing or invalid, infer from event dates; if none, infer from any month text in the raw response; otherwise use "1970-01".
+- events must be a list. Include only events with a valid YYYY-MM-DD date.
+- country must be a string; default to "Thailand" if missing.
+- status must be active, cancelled, or postponed; if missing, use "active".
+- time must be HH:MM or null.
+- poster_confidence and confidence must be numbers between 0 and 1; if missing, use 0.5.
+- Do not change text casing or wording except to fix formatting.
+
+Raw model output:
