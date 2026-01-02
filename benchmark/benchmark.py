@@ -939,6 +939,23 @@ def _save_text_with_meta(out_path: Path, text: str, meta: Optional[Dict[str, Any
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _needs_refine(pred: Any) -> bool:
+    if not isinstance(pred, dict):
+        return True
+    if _is_blank(pred.get("artist_name")) or _is_blank(pred.get("source_month")):
+        return True
+    events = pred.get("events") or []
+    if not isinstance(events, list):
+        return True
+    for event in events:
+        if not isinstance(event, dict):
+            return True
+        for field in ("venue", "city", "province"):
+            if _is_blank(event.get(field)):
+                return True
+    return False
+
+
 def command_ground_truth(args: argparse.Namespace) -> None:
     prompt = read_prompt(Path(args.prompt))
     entries = load_manifest(Path(args.manifest))
@@ -1309,6 +1326,94 @@ def command_repair(args: argparse.Namespace) -> None:
         with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
             executor.map(
                 lambda entry: _repair_entry(model_dir, entry),
+                iter_entries(entries, args.start, args.limit),
+            )
+
+
+def command_refine(args: argparse.Namespace) -> None:
+    prompt = read_prompt(Path(args.prompt))
+    entries = load_manifest(Path(args.manifest))
+    pred_root = Path(args.predictions)
+    if args.model_dir:
+        model_dirs = [Path(args.model_dir)]
+    else:
+        model_dirs = [p for p in sorted(pred_root.iterdir()) if p.is_dir()]
+    if not model_dirs:
+        return
+    max_output_tokens = _resolve_max_output(args.max_output, kind="gemini", model=args.model)
+    tokens_estimate = args.tokens_per_request
+    if tokens_estimate is None and (args.rpm or args.tpm):
+        tokens_estimate = _estimate_gemini_tokens(max_output_tokens)
+    rate_limiter = None
+    if args.rpm or args.tpm:
+        rate_limiter = RateLimiter(args.rpm, args.tpm, tokens_estimate)
+
+    def _refine_entry(model_dir: Path, entry: Dict[str, Any]) -> None:
+        if entry.get("status") != "ok":
+            return
+        poster_id = entry["id"]
+        image_path = Path(entry["image_path"])
+        if not image_path.exists():
+            return
+        json_path = model_dir / f"{poster_id}.json"
+        if not json_path.exists():
+            return
+        pred = _load_json(json_path)
+        if not args.force and not _needs_refine(pred):
+            return
+        if rate_limiter:
+            rate_limiter.acquire(tokens_estimate)
+        try:
+            existing_json = json.dumps(pred, ensure_ascii=False, indent=2)
+            refine_prompt = f"{prompt}\n{existing_json}\n"
+            raw_text, model_meta = gemini_chat(
+                f"models/{args.model}" if not args.model.startswith("models/") else args.model,
+                refine_prompt,
+                image_path,
+                DEFAULT_TEMPERATURE,
+                args.seed,
+                max_output_tokens,
+            )
+        except Exception as exc:
+            error_path = model_dir / f"{poster_id}.refine.error.json"
+            error_path.write_text(
+                json.dumps({"refine_error": str(exc), "image_path": str(image_path)}, indent=2),
+                encoding="utf-8",
+            )
+            return
+
+        refine_raw_path = model_dir / f"{poster_id}.refine.raw.txt"
+        refine_raw_path.write_text(raw_text, encoding="utf-8")
+        if model_meta:
+            refine_meta_path = model_dir / f"{poster_id}.refine.meta.json"
+            meta_out = {
+                "model": f"gemini:{args.model}",
+                "seed": args.seed,
+                "max_output_tokens": max_output_tokens,
+            }
+            meta_out.update(model_meta)
+            refine_meta_path.write_text(json.dumps(meta_out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        parsed = extract_json(raw_text)
+        if parsed is not None and _schema_valid(parsed, strict=True):
+            json_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+        else:
+            error_path = model_dir / f"{poster_id}.refine.error.json"
+            error_payload: Dict[str, Any] = {"refine_raw_path": str(refine_raw_path)}
+            if parsed is None:
+                error_payload["refine_parse_error"] = "invalid_json"
+            else:
+                error_payload["refine_schema_error"] = "strict_schema_invalid"
+            error_path.write_text(json.dumps(error_payload, indent=2), encoding="utf-8")
+        if args.sleep:
+            time.sleep(args.sleep)
+
+    for model_dir in model_dirs:
+        if not model_dir.exists():
+            continue
+        with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
+            executor.map(
+                lambda entry: _refine_entry(model_dir, entry),
                 iter_entries(entries, args.start, args.limit),
             )
 
@@ -2396,6 +2501,28 @@ def build_parser() -> argparse.ArgumentParser:
     repair.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
     repair.add_argument("--force", action="store_true", help="Force repair even if schema is valid.")
     repair.set_defaults(func=command_repair)
+
+    refine = sub.add_parser("refine", help="Refine predictions with image + JSON.")
+    refine.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    refine.add_argument("--predictions", required=True, help="Predictions root directory.")
+    refine.add_argument("--model", required=True, help="Gemini model ID for refinement.")
+    refine.add_argument("--model-dir", help="Specific model directory to refine.")
+    refine.add_argument("--prompt", default="benchmark/prompts/refine_v1.txt")
+    refine.add_argument("--limit", type=int, help="Limit number of posters.")
+    refine.add_argument("--start", type=int, default=0, help="Start index.")
+    refine.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    refine.add_argument(
+        "--max-output",
+        default="max",
+        help="Max output tokens for refinement (Gemini). Use an int or 'max'.",
+    )
+    refine.add_argument("--parallel", type=int, default=4, help="Parallel workers for refinement.")
+    refine.add_argument("--rpm", type=int, help="Requests per minute limit for refinement.")
+    refine.add_argument("--tpm", type=int, help="Tokens per minute limit for refinement.")
+    refine.add_argument("--tokens-per-request", type=int, help="Estimated tokens per refine request.")
+    refine.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
+    refine.add_argument("--force", action="store_true", help="Force refinement even if not needed.")
+    refine.set_defaults(func=command_refine)
 
     judge = sub.add_parser("judge", help="Judge predictions with OpenRouter.")
     judge.add_argument("--manifest", required=True, help="Manifest JSON path.")

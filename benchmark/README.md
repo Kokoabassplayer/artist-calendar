@@ -116,6 +116,20 @@ Optional: repair strict-schema JSON after predictions:
   --tokens-per-request 1000
 ```
 
+Optional: refine predictions with image + JSON (fills missing fields):
+```bash
+./venv_artist/bin/python benchmark/benchmark.py refine \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --model gemma-3-27b-it \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --prompt benchmark/prompts/refine_v1.txt \
+  --parallel 4 \
+  --rpm 30 \
+  --tpm 15000 \
+  --tokens-per-request 1000
+```
+
 Optional: enable OpenRouter plugins (web search + response healing):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
