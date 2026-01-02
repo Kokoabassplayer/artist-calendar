@@ -1,0 +1,167 @@
+[
+  {
+    "model_a": "gemini-gemma-3-12b-it",
+    "model_b": "gemini-gemma-3-1b-it",
+    "diff_mean": 71.522,
+    "ci95": [
+      66.129,
+      76.507
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-12b-it",
+    "model_b": "gemini-gemma-3-27b-it",
+    "diff_mean": -1.931,
+    "ci95": [
+      -8.208,
+      4.302
+    ],
+    "p_value": 0.57,
+    "significant": false
+  },
+  {
+    "model_a": "gemini-gemma-3-12b-it",
+    "model_b": "gemini-gemma-3-4b-it",
+    "diff_mean": 32.119,
+    "ci95": [
+      21.578,
+      42.768
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-12b-it",
+    "model_b": "gemini-gemma-3n-e2b-it",
+    "diff_mean": 71.522,
+    "ci95": [
+      66.129,
+      76.507
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-12b-it",
+    "model_b": "gemini-gemma-3n-e4b-it",
+    "diff_mean": 71.522,
+    "ci95": [
+      66.129,
+      76.507
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-1b-it",
+    "model_b": "gemini-gemma-3-27b-it",
+    "diff_mean": -73.453,
+    "ci95": [
+      -77.182,
+      -69.117
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-1b-it",
+    "model_b": "gemini-gemma-3-4b-it",
+    "diff_mean": -39.403,
+    "ci95": [
+      -48.284,
+      -30.25
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-1b-it",
+    "model_b": "gemini-gemma-3n-e2b-it",
+    "diff_mean": 0.0,
+    "ci95": [
+      0.0,
+      0.0
+    ],
+    "p_value": 0.0,
+    "significant": false
+  },
+  {
+    "model_a": "gemini-gemma-3-1b-it",
+    "model_b": "gemini-gemma-3n-e4b-it",
+    "diff_mean": 0.0,
+    "ci95": [
+      0.0,
+      0.0
+    ],
+    "p_value": 0.0,
+    "significant": false
+  },
+  {
+    "model_a": "gemini-gemma-3-27b-it",
+    "model_b": "gemini-gemma-3-4b-it",
+    "diff_mean": 34.051,
+    "ci95": [
+      24.321,
+      43.602
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-27b-it",
+    "model_b": "gemini-gemma-3n-e2b-it",
+    "diff_mean": 73.453,
+    "ci95": [
+      69.268,
+      77.209
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-27b-it",
+    "model_b": "gemini-gemma-3n-e4b-it",
+    "diff_mean": 73.453,
+    "ci95": [
+      69.268,
+      77.209
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-4b-it",
+    "model_b": "gemini-gemma-3n-e2b-it",
+    "diff_mean": 39.403,
+    "ci95": [
+      30.389,
+      47.442
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3-4b-it",
+    "model_b": "gemini-gemma-3n-e4b-it",
+    "diff_mean": 39.403,
+    "ci95": [
+      30.389,
+      47.442
+    ],
+    "p_value": 0.0,
+    "significant": true
+  },
+  {
+    "model_a": "gemini-gemma-3n-e2b-it",
+    "model_b": "gemini-gemma-3n-e4b-it",
+    "diff_mean": 0.0,
+    "ci95": [
+      0.0,
+      0.0
+    ],
+    "p_value": 0.0,
+    "significant": false
+  }
+]

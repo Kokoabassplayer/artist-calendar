@@ -19,12 +19,15 @@ Optional environment variables:
 - `benchmark/models_vl.txt`: vision-capable OpenRouter models for image predictions.
 - `benchmark/images/`: downloaded posters (ignored by git).
 - `benchmark/ground_truth/`: GPT-5.2 ground truth JSON (ignored by git).
-- `benchmark/predictions_openrouter/`: model outputs (ignored by git).
-- `benchmark/judgements_openrouter/`: judge scores (ignored by git).
-- `benchmark/report_openrouter/`: aggregated report (ignored by git).
-- `benchmark/report_openrouter/scatter.svg`: performance vs cost quadrant chart.
+- `benchmark/runs/<run_id>/`: per-run outputs (predictions, judgements, report, logs).
+- `benchmark/published/`: shareable reports copied from a run.
 
 ## Workflow
+
+Set a run ID to keep outputs grouped:
+```bash
+RUN_ID=20260101-153411-gemini-gemma-temp02
+```
 
 1) Download posters:
 ```bash
@@ -56,7 +59,7 @@ If JSON is truncated, rerun only error cases with higher tokens:
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
   --manifest benchmark/manifest.json \
-  --out benchmark/predictions_openrouter \
+  --out benchmark/runs/$RUN_ID/predictions \
   --models $(cat benchmark/models_vl.txt)
 ```
 
@@ -64,7 +67,7 @@ Optional: run the full candidate list (expect some to fail if not vision-capable
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
   --manifest benchmark/manifest.json \
-  --out benchmark/predictions_openrouter \
+  --out benchmark/runs/$RUN_ID/predictions \
   --models $(cat benchmark/models.txt)
 ```
 
@@ -72,7 +75,7 @@ Optional: cap prediction output tokens (OpenRouter/Gemini):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
   --manifest benchmark/manifest.json \
-  --out benchmark/predictions_openrouter \
+  --out benchmark/runs/$RUN_ID/predictions \
   --models $(cat benchmark/models_vl.txt) \
   --max-output 4096 \
   --timeout 300
@@ -83,8 +86,8 @@ Optional: cap prediction output tokens (OpenRouter/Gemini):
 ./venv_artist/bin/python benchmark/benchmark.py judge \
   --manifest benchmark/manifest.json \
   --ground-truth benchmark/ground_truth \
-  --predictions benchmark/predictions_openrouter \
-  --out benchmark/judgements_openrouter \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --out benchmark/runs/$RUN_ID/judgements \
   --model openai/gpt-oss-120b:free
 ```
 
@@ -93,8 +96,8 @@ Optional: cap judge output tokens:
 ./venv_artist/bin/python benchmark/benchmark.py judge \
   --manifest benchmark/manifest.json \
   --ground-truth benchmark/ground_truth \
-  --predictions benchmark/predictions_openrouter \
-  --out benchmark/judgements_openrouter \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --out benchmark/runs/$RUN_ID/judgements \
   --model openai/gpt-oss-120b:free \
   --max-output 2048 \
   --timeout 300
@@ -105,23 +108,23 @@ Optional: cap judge output tokens:
 ./venv_artist/bin/python benchmark/benchmark.py report \
   --manifest benchmark/manifest.json \
   --ground-truth benchmark/ground_truth \
-  --predictions benchmark/predictions_openrouter \
-  --judgements benchmark/judgements_openrouter \
-  --out benchmark/report_openrouter
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --judgements benchmark/runs/$RUN_ID/judgements \
+  --out benchmark/runs/$RUN_ID/report
 ```
 
 6) Generate cost/performance scatter plot:
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py plot \
-  --report benchmark/report_openrouter/summary.json \
-  --out benchmark/report_openrouter
+  --report benchmark/runs/$RUN_ID/report/summary.json \
+  --out benchmark/runs/$RUN_ID/report
 ```
 
 7) Generate a comprehensive narrative report:
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py interpret \
-  --report-dir benchmark/report_openrouter \
-  --out benchmark/report_openrouter/final_report.md \
+  --report-dir benchmark/runs/$RUN_ID/report \
+  --out benchmark/runs/$RUN_ID/report/final_report.md \
   --model openai/gpt-oss-120b:free \
   --max-output 4096 \
   --ground-truth-quality silver
@@ -130,9 +133,9 @@ Optional: cap judge output tokens:
 8) Publish a run (commit-ready):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py publish \
-  --report-dir benchmark/report_openrouter \
+  --report-dir benchmark/runs/$RUN_ID/report \
   --out benchmark/published \
-  --label baseline
+  --label $RUN_ID
 ```
 
 ## Notes
@@ -140,7 +143,7 @@ Optional: cap judge output tokens:
 - The benchmark uses prompts from `benchmark/prompts/`.
 - Cost is computed from OpenRouter usage + pricing metadata when available.
 - `schema_valid_rate` checks required keys + basic formats; `schema_strict_rate` also forbids extra keys.
-- All model calls use temperature 0.1 (see `DEFAULT_TEMPERATURE` in `benchmark/benchmark.py`).
+- All model calls use temperature 0.2 (see `DEFAULT_TEMPERATURE` in `benchmark/benchmark.py`).
 - For OpenRouter steps, `--max-output max` uses the model's advertised max completion limit.
 - For OpenRouter predictions, `--max-output max` uses the model's advertised completion limit.
 - Use `--timeout` to raise OpenRouter request timeout.
