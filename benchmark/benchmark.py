@@ -799,6 +799,49 @@ def gemini_chat(
     return text, meta
 
 
+def gemini_text_chat(
+    model: str,
+    prompt: str,
+    text: str,
+    temperature: float,
+    seed: Optional[int],
+    max_output_tokens: Optional[int],
+) -> Tuple[str, Dict[str, Any]]:
+    if genai is None or types is None:
+        raise RuntimeError("google-genai is not available.")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set.")
+    client = genai.Client(api_key=api_key)
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        seed=seed,
+        max_output_tokens=max_output_tokens,
+    )
+    combined = f"{prompt}\n\n{text}"
+    response = client.models.generate_content(model=model, contents=[combined], config=config)
+    text_out = response.text or ""
+    usage = getattr(response, "usage_metadata", None)
+    prompt_tokens = None
+    completion_tokens = None
+    total_tokens = None
+    if usage is not None:
+        if isinstance(usage, dict):
+            prompt_tokens = usage.get("prompt_token_count")
+            completion_tokens = usage.get("candidates_token_count")
+            total_tokens = usage.get("total_token_count")
+        else:
+            prompt_tokens = getattr(usage, "prompt_token_count", None)
+            completion_tokens = getattr(usage, "candidates_token_count", None)
+            total_tokens = getattr(usage, "total_token_count", None)
+    meta = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
+    return text_out, meta
+
+
 def gemini_repair_json(
     model: str,
     prompt: str,
@@ -900,6 +943,146 @@ def command_download(args: argparse.Namespace) -> None:
             time.sleep(args.sleep)
 
     save_manifest(Path(args.manifest), entries)
+
+
+def command_ocr(args: argparse.Namespace) -> None:
+    prompt = read_prompt(Path(args.prompt))
+    entries = load_manifest(Path(args.manifest))
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    max_output_tokens = _resolve_max_output(args.max_output, kind="gemini", model=args.model)
+    tokens_estimate = args.tokens_per_request
+    if tokens_estimate is None and (args.rpm or args.tpm):
+        tokens_estimate = _estimate_gemini_tokens(max_output_tokens)
+    rate_limiter = None
+    if args.rpm or args.tpm:
+        rate_limiter = RateLimiter(args.rpm, args.tpm, tokens_estimate)
+
+    def _ocr_entry(entry: Dict[str, Any]) -> None:
+        if entry.get("status") != "ok":
+            return
+        poster_id = entry["id"]
+        out_path = out_dir / f"{poster_id}.txt"
+        if out_path.exists() and not args.force:
+            return
+        image_path = Path(entry["image_path"])
+        if not image_path.exists():
+            return
+        if rate_limiter:
+            rate_limiter.acquire(tokens_estimate)
+        try:
+            raw_text, model_meta = gemini_chat(
+                f"models/{args.model}" if not args.model.startswith("models/") else args.model,
+                prompt,
+                image_path,
+                DEFAULT_TEMPERATURE,
+                args.seed,
+                max_output_tokens,
+            )
+        except Exception as exc:
+            error_path = out_dir / f"{poster_id}.error.json"
+            error_path.write_text(
+                json.dumps({"request_error": str(exc), "image_path": str(image_path)}, indent=2),
+                encoding="utf-8",
+            )
+            return
+        meta = {
+            "model": f"gemini:{args.model}",
+            "estimated_cost_usd": 0,
+            "seed": args.seed,
+            "max_output_tokens": max_output_tokens,
+        }
+        if model_meta:
+            meta.update(model_meta)
+        _save_text_with_meta(out_path, raw_text, meta=meta)
+        if args.sleep:
+            time.sleep(args.sleep)
+
+    with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
+        executor.map(_ocr_entry, iter_entries(entries, args.start, args.limit))
+
+
+def command_parse_ocr(args: argparse.Namespace) -> None:
+    prompt = read_prompt(Path(args.prompt))
+    repair_prompt = read_prompt(Path(args.repair_prompt)) if args.repair_json else None
+    entries = load_manifest(Path(args.manifest))
+    ocr_dir = Path(args.ocr)
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    model_dir = out_dir / safe_name(f"gemini-{args.model}")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    max_output_tokens = _resolve_max_output(args.max_output, kind="gemini", model=args.model)
+    tokens_estimate = args.tokens_per_request
+    if tokens_estimate is None and (args.rpm or args.tpm):
+        tokens_estimate = _estimate_gemini_tokens(max_output_tokens)
+    rate_limiter = None
+    if args.rpm or args.tpm:
+        rate_limiter = RateLimiter(args.rpm, args.tpm, tokens_estimate)
+
+    def _parse_entry(entry: Dict[str, Any]) -> None:
+        if entry.get("status") != "ok":
+            return
+        poster_id = entry["id"]
+        json_path = model_dir / f"{poster_id}.json"
+        if json_path.exists() and not args.force:
+            return
+        ocr_path = ocr_dir / f"{poster_id}.txt"
+        if not ocr_path.exists():
+            return
+        ocr_text = ocr_path.read_text(encoding="utf-8")
+        if rate_limiter:
+            rate_limiter.acquire(tokens_estimate)
+        try:
+            raw_text, model_meta = gemini_text_chat(
+                f"models/{args.model}" if not args.model.startswith("models/") else args.model,
+                prompt,
+                ocr_text,
+                DEFAULT_TEMPERATURE,
+                args.seed,
+                max_output_tokens,
+            )
+        except Exception as exc:
+            error_path = model_dir / f"{poster_id}.error.json"
+            error_path.write_text(
+                json.dumps({"request_error": str(exc), "ocr_path": str(ocr_path)}, indent=2),
+                encoding="utf-8",
+            )
+            return
+        meta = {
+            "model": f"gemini:{args.model}",
+            "estimated_cost_usd": 0,
+            "seed": args.seed,
+            "max_output_tokens": max_output_tokens,
+            "ocr_path": str(ocr_path),
+        }
+        if model_meta:
+            meta.update(model_meta)
+        repair_fn = None
+        if repair_prompt:
+            def _repair(raw: str) -> Tuple[str, Dict[str, Any]]:
+                repair_text, repair_meta = gemini_repair_json(
+                    f"models/{args.model}" if not args.model.startswith("models/") else args.model,
+                    repair_prompt,
+                    raw,
+                    DEFAULT_TEMPERATURE,
+                    args.seed,
+                    max_output_tokens,
+                )
+                meta_out = {
+                    "model": f"gemini:{args.model}",
+                    "seed": args.seed,
+                    "max_output_tokens": max_output_tokens,
+                }
+                if repair_meta:
+                    meta_out.update(repair_meta)
+                return repair_text, meta_out
+            repair_fn = _repair
+        _save_raw_and_json_with_repair(model_dir, poster_id, raw_text, meta=meta, repair_fn=repair_fn)
+        if args.sleep:
+            time.sleep(args.sleep)
+
+    with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
+        executor.map(_parse_entry, iter_entries(entries, args.start, args.limit))
 
 
 def _save_raw_and_json(
@@ -2499,6 +2682,59 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("--sleep", type=float, default=0.0, help="Delay between downloads.")
     download.add_argument("--force", action="store_true", help="Redownload existing images.")
     download.set_defaults(func=command_download)
+
+    ocr = sub.add_parser("ocr", help="OCR posters with Gemini.")
+    ocr.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    ocr.add_argument("--out", required=True, help="OCR output directory.")
+    ocr.add_argument("--model", required=True, help="Gemini model ID.")
+    ocr.add_argument("--prompt", default="benchmark/prompts/ocr.txt")
+    ocr.add_argument("--limit", type=int, help="Limit number of posters.")
+    ocr.add_argument("--start", type=int, default=0, help="Start index.")
+    ocr.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    ocr.add_argument(
+        "--max-output",
+        default="max",
+        help="Max output tokens for OCR (Gemini). Use an int or 'max'.",
+    )
+    ocr.add_argument("--parallel", type=int, default=4, help="Parallel workers for OCR.")
+    ocr.add_argument("--rpm", type=int, help="Requests per minute limit for OCR.")
+    ocr.add_argument("--tpm", type=int, help="Tokens per minute limit for OCR.")
+    ocr.add_argument("--tokens-per-request", type=int, help="Estimated tokens per OCR request.")
+    ocr.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
+    ocr.add_argument("--force", action="store_true", help="Overwrite existing OCR outputs.")
+    ocr.set_defaults(func=command_ocr)
+
+    parse_ocr = sub.add_parser("parse-ocr", help="Parse OCR text into JSON with Gemini.")
+    parse_ocr.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    parse_ocr.add_argument("--ocr", required=True, help="OCR directory with .txt files.")
+    parse_ocr.add_argument("--out", required=True, help="Prediction output directory.")
+    parse_ocr.add_argument("--model", required=True, help="Gemini model ID.")
+    parse_ocr.add_argument("--prompt", default="benchmark/prompts/parse_ocr.txt")
+    parse_ocr.add_argument("--limit", type=int, help="Limit number of posters.")
+    parse_ocr.add_argument("--start", type=int, default=0, help="Start index.")
+    parse_ocr.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parse_ocr.add_argument(
+        "--max-output",
+        default="max",
+        help="Max output tokens for parsing (Gemini). Use an int or 'max'.",
+    )
+    parse_ocr.add_argument("--parallel", type=int, default=4, help="Parallel workers for parsing.")
+    parse_ocr.add_argument("--rpm", type=int, help="Requests per minute limit for parsing.")
+    parse_ocr.add_argument("--tpm", type=int, help="Tokens per minute limit for parsing.")
+    parse_ocr.add_argument("--tokens-per-request", type=int, help="Estimated tokens per parse request.")
+    parse_ocr.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
+    parse_ocr.add_argument("--force", action="store_true", help="Overwrite existing outputs.")
+    parse_ocr.add_argument(
+        "--repair-json",
+        action="store_true",
+        help="Attempt JSON repair for schema-strict output.",
+    )
+    parse_ocr.add_argument(
+        "--repair-prompt",
+        default="benchmark/prompts/repair_json.txt",
+        help="Prompt file used for JSON repair.",
+    )
+    parse_ocr.set_defaults(func=command_parse_ocr)
 
     ground = sub.add_parser("ground-truth", help="Generate ground truth with OpenRouter.")
     ground.add_argument("--manifest", required=True, help="Manifest JSON path.")

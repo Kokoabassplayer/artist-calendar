@@ -63,6 +63,32 @@ If JSON is truncated, rerun only error cases with higher tokens:
   --models $(cat benchmark/models_vl.txt)
 ```
 
+Optional: OCR-first pipeline (Gemini):
+```bash
+./venv_artist/bin/python benchmark/benchmark.py ocr \
+  --manifest benchmark/manifest.json \
+  --out benchmark/runs/$RUN_ID/ocr \
+  --model gemma-3-27b-it \
+  --prompt benchmark/prompts/ocr.txt \
+  --parallel 4 \
+  --rpm 30 \
+  --tpm 15000 \
+  --tokens-per-request 520
+
+./venv_artist/bin/python benchmark/benchmark.py parse-ocr \
+  --manifest benchmark/manifest.json \
+  --ocr benchmark/runs/$RUN_ID/ocr \
+  --out benchmark/runs/$RUN_ID/predictions \
+  --model gemma-3-27b-it \
+  --prompt benchmark/prompts/parse_ocr.txt \
+  --repair-json \
+  --repair-prompt benchmark/prompts/repair_json.txt \
+  --parallel 4 \
+  --rpm 30 \
+  --tpm 15000 \
+  --tokens-per-request 520
+```
+
 Optional: run the full candidate list (expect some to fail if not vision-capable):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
