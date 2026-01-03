@@ -10,6 +10,12 @@
       85.59
     ],
     "app_quality_std": 6.997,
+    "app_core_score": 82.3,
+    "app_core_ci95": [
+      80.3,
+      84.34
+    ],
+    "app_core_std": 7.899,
     "avg_score": 57.0,
     "schema_ok_rate": 1.0,
     "schema_valid_rate": 1.0,
@@ -17,6 +23,7 @@
     "json_parse_rate": 1.0,
     "avg_top_level_score": 0.738,
     "avg_event_match_score": 0.736,
+    "avg_core_event_match_score": 0.695,
     "avg_event_count_score": 0.986,
     "avg_location_score": 0.744,
     "avg_venue_score": 0.667,

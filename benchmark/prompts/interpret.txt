@@ -7,6 +7,7 @@ Requirements:
 - Keep it comprehensive but concise (roughly 600-900 words).
 - Explicitly state the ground-truth quality level (gold/silver) and limitations.
 - Mention reproducibility: temperature, seed, and max output caps if available in Meta JSON.
+- Highlight both app_quality_score and app_core_score when available.
 
 Structure:
 # Final Benchmark Report
@@ -14,7 +15,7 @@ Structure:
 ## Dataset
 ## Methodology
 ## Results
-- Include a short table summarizing model, app_quality_score, total_cost_usd, schema_strict_rate.
+- Include a short table summarizing model, app_quality_score, app_core_score, total_cost_usd, schema_strict_rate.
 ## Interpretation
 - Discuss accuracy vs cost tradeoffs and any statistically significant differences.
 ## Limitations

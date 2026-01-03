@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-01-03T15:31:38+00:00",
+  "generated_at": "2026-01-03T16:30:56+00:00",
   "posters_manifest_ok": 58,
   "ground_truth_available": 58,
   "missing_ground_truth": 0,
@@ -31,6 +31,13 @@
       "ticket_info": 0.05,
       "status": 0.05
     },
+    "core_event": {
+      "date": 0.375,
+      "venue": 0.25,
+      "city": 0.1875,
+      "province": 0.125,
+      "country": 0.0625
+    },
     "quality": {
       "structured": 0.4,
       "event_match": 0.35,
@@ -42,7 +49,7 @@
   "prompt_hashes": {
     "benchmark/prompts/fill_locations.txt": "1bb7e46f497d55caafc4749ae18a3c2bdb0ad9d663713ec2d8dffe552bbef9ef",
     "benchmark/prompts/ground_truth.txt": "5dbddf4622d452204da395ee1f5f60edc93b7e0fc55f22cb5df8951386910184",
-    "benchmark/prompts/interpret.txt": "7586c366b29291832b3a77a9da2643f16d0ae95ffc7137f08d2edabaa2abae16",
+    "benchmark/prompts/interpret.txt": "cb69e83c5816e62e2e99ac4dfd24845e370f114aea7833d321fe5c9efb260a76",
     "benchmark/prompts/judge.txt": "fe310d4d13ade006a81244135c3328b5c7b051a5598f3857d7042ba9102390df",
     "benchmark/prompts/judge_compact.txt": "60d5d6ba913048ebdccd4e73afdf7eb7d10628cbde2d4bf8dc52710852db8863",
     "benchmark/prompts/ocr.txt": "436067200b8e1802fd96a89eb0951fcd42410eb8aaaf0dca976429d48b6aba23",

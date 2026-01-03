@@ -102,6 +102,13 @@ EVENT_SCORE_WEIGHTS = {
     "ticket_info": 0.05,
     "status": 0.05,
 }
+CORE_EVENT_SCORE_WEIGHTS = {
+    "date": 0.375,
+    "venue": 0.25,
+    "city": 0.1875,
+    "province": 0.125,
+    "country": 0.0625,
+}
 QUALITY_WEIGHTS = {
     "structured": 0.4,
     "event_match": 0.35,
@@ -2326,6 +2333,20 @@ def _event_similarity(gold_event: Dict[str, Any], pred_event: Dict[str, Any]) ->
     return total
 
 
+def _event_similarity_core(gold_event: Dict[str, Any], pred_event: Dict[str, Any]) -> float:
+    scores = {
+        "date": _exact_score(gold_event.get("date"), pred_event.get("date")),
+        "venue": _string_score(gold_event.get("venue"), pred_event.get("venue")),
+        "city": _string_score(gold_event.get("city"), pred_event.get("city")),
+        "province": _string_score(gold_event.get("province"), pred_event.get("province")),
+        "country": _exact_score(gold_event.get("country"), pred_event.get("country")),
+    }
+    total = 0.0
+    for field, weight in CORE_EVENT_SCORE_WEIGHTS.items():
+        total += weight * scores.get(field, 0.0)
+    return total
+
+
 def _hungarian(cost: List[List[float]]) -> List[int]:
     size = len(cost)
     if size == 0:
@@ -2379,6 +2400,7 @@ def _hungarian(cost: List[List[float]]) -> List[int]:
 def _optimal_event_matches(
     gold_events: List[Dict[str, Any]],
     pred_events: List[Dict[str, Any]],
+    similarity_fn: Callable[[Dict[str, Any], Dict[str, Any]], float] = _event_similarity,
 ) -> List[Tuple[int, Optional[int], float]]:
     gold_count = len(gold_events)
     pred_count = len(pred_events)
@@ -2388,7 +2410,7 @@ def _optimal_event_matches(
     similarity = [[0.0 for _ in range(size)] for _ in range(size)]
     for i in range(gold_count):
         for j in range(pred_count):
-            similarity[i][j] = float(_event_similarity(gold_events[i], pred_events[j]))
+            similarity[i][j] = float(similarity_fn(gold_events[i], pred_events[j]))
     cost = [[1.0 - similarity[i][j] for j in range(size)] for i in range(size)]
     assignment = _hungarian(cost)
     matches: List[Tuple[int, Optional[int], float]] = []
@@ -2404,12 +2426,13 @@ def _optimal_event_matches(
 def _match_events(
     gold_events: List[Dict[str, Any]],
     pred_events: List[Dict[str, Any]],
+    similarity_fn: Callable[[Dict[str, Any], Dict[str, Any]], float] = _event_similarity,
 ) -> Tuple[float, float, float]:
     if not gold_events and not pred_events:
         return 1.0, 1.0, 1.0
     if not gold_events:
         return 0.0, 0.0, 0.0
-    matches = _optimal_event_matches(gold_events, pred_events)
+    matches = _optimal_event_matches(gold_events, pred_events, similarity_fn=similarity_fn)
     match_total = 0.0
     venue_total = 0.0
     location_total = 0.0
@@ -2594,10 +2617,12 @@ def command_report(args: argparse.Namespace) -> None:
         app_quality_scores = []
         top_level_scores = []
         event_match_scores = []
+        core_event_match_scores = []
         event_count_scores = []
         location_scores = []
         venue_scores = []
         missing_field_rates = []
+        app_core_scores = []
         model_costs = []
         judge_costs = []
         for entry in entries:
@@ -2628,6 +2653,11 @@ def command_report(args: argparse.Namespace) -> None:
 
             event_count_score = _event_count_score(gold_events, pred_events)
             event_match_score, venue_score, location_score = _match_events(gold_events, pred_events)
+            core_event_match_score, _, _ = _match_events(
+                gold_events,
+                pred_events,
+                similarity_fn=_event_similarity_core,
+            )
             top_level_score = _score_top_level(gt, pred)
             missing_field_rate = _missing_field_rate(pred_events, len(gold_events))
             structured_score = _structured_score(pred_ok, schema_strict_ok)
@@ -2638,13 +2668,22 @@ def command_report(args: argparse.Namespace) -> None:
                 event_count_score,
                 missing_field_rate,
             )
+            app_core_score = _app_quality_score(
+                structured_score,
+                top_level_score,
+                core_event_match_score,
+                event_count_score,
+                missing_field_rate,
+            )
             app_quality_scores.append(app_quality_score)
             top_level_scores.append(top_level_score)
             event_match_scores.append(event_match_score)
+            core_event_match_scores.append(core_event_match_score)
             event_count_scores.append(event_count_score)
             location_scores.append(location_score)
             venue_scores.append(venue_score)
             missing_field_rates.append(missing_field_rate)
+            app_core_scores.append(app_core_score)
             judge = _load_json(judge_dir / f"{poster_id}.json") if judge_dir.exists() else None
             if isinstance(judge, dict) and isinstance(judge.get("overall_score"), (int, float)):
                 scores.append(judge["overall_score"])
@@ -2663,6 +2702,9 @@ def command_report(args: argparse.Namespace) -> None:
         app_quality_ci = _bootstrap_ci(app_quality_scores)
         app_quality_ci_formatted = _format_ci(app_quality_ci, digits=2)
         app_quality_std = statistics.pstdev(app_quality_scores) if len(app_quality_scores) > 1 else 0.0
+        app_core_ci = _bootstrap_ci(app_core_scores)
+        app_core_ci_formatted = _format_ci(app_core_ci, digits=2)
+        app_core_std = statistics.pstdev(app_core_scores) if len(app_core_scores) > 1 else 0.0
         model_quality[model_name] = app_quality_scores
         rows.append(
             {
@@ -2675,6 +2717,11 @@ def command_report(args: argparse.Namespace) -> None:
                 else None,
                 "app_quality_ci95": app_quality_ci_formatted,
                 "app_quality_std": round(app_quality_std, 3),
+                "app_core_score": round(sum(app_core_scores) / len(app_core_scores), 2)
+                if app_core_scores
+                else None,
+                "app_core_ci95": app_core_ci_formatted,
+                "app_core_std": round(app_core_std, 3),
                 "avg_score": round(sum(scores) / len(scores), 2) if scores else None,
                 "schema_ok_rate": round(sum(schema_ok) / len(schema_ok), 3) if schema_ok else None,
                 "schema_valid_rate": round(schema_valid / total_gt, 3) if total_gt else None,
@@ -2685,6 +2732,11 @@ def command_report(args: argparse.Namespace) -> None:
                 else None,
                 "avg_event_match_score": round(sum(event_match_scores) / len(event_match_scores), 3)
                 if event_match_scores
+                else None,
+                "avg_core_event_match_score": round(
+                    sum(core_event_match_scores) / len(core_event_match_scores), 3
+                )
+                if core_event_match_scores
                 else None,
                 "avg_event_count_score": round(sum(event_count_scores) / len(event_count_scores), 3)
                 if event_count_scores
@@ -2718,14 +2770,15 @@ def command_report(args: argparse.Namespace) -> None:
         "",
         "## Model summary",
         "",
-        "| Model | Posters | Missing preds | App quality | 95% CI | Schema strict rate | JSON parse rate | Event match score | Top-level score | Event count score | Missing field rate | Avg judge score | Total cost (USD) |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Model | Posters | Missing preds | App quality | App core | App 95% CI | Schema strict rate | JSON parse rate | Event match score | Core event match | Top-level score | Event count score | Missing field rate | Avg judge score | Total cost (USD) |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in rows:
         report_lines.append(
             f"| {row['model']} | {row['posters']} | {row['missing_predictions']} | {row['app_quality_score']} | "
-            f"{_format_ci_text(row['app_quality_ci95'])} | {row['schema_strict_rate']} | "
-            f"{row['json_parse_rate']} | {row['avg_event_match_score']} | {row['avg_top_level_score']} | "
+            f"{row['app_core_score']} | {_format_ci_text(row['app_quality_ci95'])} | "
+            f"{row['schema_strict_rate']} | {row['json_parse_rate']} | {row['avg_event_match_score']} | "
+            f"{row['avg_core_event_match_score']} | {row['avg_top_level_score']} | "
             f"{row['avg_event_count_score']} | {row['avg_missing_field_rate']} | {row['avg_score']} | "
             f"{row['total_cost_usd']} |"
         )
@@ -2790,6 +2843,7 @@ def command_report(args: argparse.Namespace) -> None:
         "weights": {
             "top_level": TOP_LEVEL_WEIGHTS,
             "event": EVENT_SCORE_WEIGHTS,
+            "core_event": CORE_EVENT_SCORE_WEIGHTS,
             "quality": QUALITY_WEIGHTS,
             "missing_field_penalty": MISSING_FIELD_PENALTY,
         },
@@ -3005,6 +3059,7 @@ def command_ledger(args: argparse.Namespace) -> None:
             if not isinstance(row, dict):
                 continue
             ci = row.get("app_quality_ci95")
+            core_ci = row.get("app_core_ci95")
             rows.append(
                 {
                     "run_id": run_dir.name,
@@ -3020,11 +3075,16 @@ def command_ledger(args: argparse.Namespace) -> None:
                     "app_quality_ci95": ci if isinstance(ci, list) and len(ci) == 2 else None,
                     "app_quality_ci95_low": ci[0] if isinstance(ci, list) and len(ci) == 2 else None,
                     "app_quality_ci95_high": ci[1] if isinstance(ci, list) and len(ci) == 2 else None,
+                    "app_core_score": row.get("app_core_score"),
+                    "app_core_ci95": core_ci if isinstance(core_ci, list) and len(core_ci) == 2 else None,
+                    "app_core_ci95_low": core_ci[0] if isinstance(core_ci, list) and len(core_ci) == 2 else None,
+                    "app_core_ci95_high": core_ci[1] if isinstance(core_ci, list) and len(core_ci) == 2 else None,
                     "schema_strict_rate": row.get("schema_strict_rate"),
                     "schema_valid_rate": row.get("schema_valid_rate"),
                     "json_parse_rate": row.get("json_parse_rate"),
                     "avg_top_level_score": row.get("avg_top_level_score"),
                     "avg_event_match_score": row.get("avg_event_match_score"),
+                    "avg_core_event_match_score": row.get("avg_core_event_match_score"),
                     "avg_event_count_score": row.get("avg_event_count_score"),
                     "avg_location_score": row.get("avg_location_score"),
                     "avg_venue_score": row.get("avg_venue_score"),
@@ -3056,11 +3116,16 @@ def command_ledger(args: argparse.Namespace) -> None:
         "app_quality_ci95",
         "app_quality_ci95_low",
         "app_quality_ci95_high",
+        "app_core_score",
+        "app_core_ci95",
+        "app_core_ci95_low",
+        "app_core_ci95_high",
         "schema_strict_rate",
         "schema_valid_rate",
         "json_parse_rate",
         "avg_top_level_score",
         "avg_event_match_score",
+        "avg_core_event_match_score",
         "avg_event_count_score",
         "avg_location_score",
         "avg_venue_score",
@@ -3091,6 +3156,7 @@ def command_ledger(args: argparse.Namespace) -> None:
             "run_id",
             "model",
             "app_quality_score",
+            "app_core_score",
             "app_quality_ci95",
             "schema_strict_rate",
             "missing_predictions",
@@ -3106,6 +3172,7 @@ def command_ledger(args: argparse.Namespace) -> None:
                         str(row.get("run_id", "")),
                         str(row.get("model", "")),
                         f"{row.get('app_quality_score', '')}",
+                        f"{row.get('app_core_score', '')}",
                         _format_ci_range(row.get("app_quality_ci95")),
                         f"{row.get('schema_strict_rate', '')}",
                         f"{row.get('missing_predictions', '')}",

@@ -20,6 +20,7 @@ LLM-generated ground truth is acceptable only as **silver data** for rapid itera
 ## Evaluation metrics
 - **Schema strict rate**: exact schema keys and types; no extra fields.
 - **App quality score (0-100)**: weighted composite of structured output, top-level fields, event matching, and event count (weights in `benchmark/benchmark.py`).
+- **App core score (0-100)**: same composite score, but event matching uses only date/venue/city/province/country (ignores time, ticket info, event name, status).
 - **Event matching**: optimal global assignment (Hungarian) between gold and predicted events.
 - **Missing field penalty**: reduces score for missing date/venue/city/province.
 
