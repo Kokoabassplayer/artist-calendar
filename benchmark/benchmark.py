@@ -46,6 +46,40 @@ DEFAULT_OLLAMA_TIMEOUT = 600
 DEFAULT_GEMINI_PROMPT_TOKENS = 2000
 DEFAULT_GEMINI_OUTPUT_TOKENS = 2000
 PROVINCE_DATA_PATH = Path("benchmark/data/th_provinces.json")
+VENUE_KEYWORDS = (
+    "cafe",
+    "café",
+    "bar",
+    "pub",
+    "club",
+    "hall",
+    "stage",
+    "theatre",
+    "theater",
+    "arena",
+    "restaurant",
+    "music bar",
+    "livehouse",
+    "lounge",
+    "studio",
+    "center",
+    "centre",
+    "mall",
+    "market",
+    "ร้าน",
+    "คาเฟ่",
+    "คาเฟ",
+    "บาร์",
+    "ผับ",
+    "ฮอลล์",
+    "เวที",
+    "สเตจ",
+    "โรงละคร",
+    "หอประชุม",
+    "ศูนย์",
+    "สเตเดียม",
+    "สนาม",
+)
 BOOTSTRAP_SAMPLES = 1000
 BOOTSTRAP_SEED = 23
 BOOTSTRAP_ALPHA = 0.05
@@ -318,6 +352,23 @@ def _find_province_in_text(text: Any) -> Optional[str]:
                 if alias in text:
                     return alias
     return None
+
+
+def _looks_like_venue(text: Any) -> bool:
+    if not isinstance(text, str):
+        return False
+    stripped = text.strip()
+    if not stripped:
+        return False
+    lowered = stripped.lower()
+    for keyword in VENUE_KEYWORDS:
+        if keyword.isascii():
+            if keyword in lowered:
+                return True
+        else:
+            if keyword in stripped:
+                return True
+    return False
 
 
 def read_lines(path: Path) -> List[str]:
@@ -1194,6 +1245,9 @@ def _normalize_locations(pred: Any) -> bool:
     for event in events:
         if not isinstance(event, dict):
             continue
+        if _is_blank(event.get("venue")) and _looks_like_venue(event.get("event_name")):
+            event["venue"] = event.get("event_name")
+            changed = True
         province = event.get("province")
         city = event.get("city")
         filled_province = False
