@@ -1,0 +1,128 @@
+Convert the OCR text into structured tour data.
+
+Return a single JSON object and nothing else. No markdown or code fences.
+Follow the schema exactly (same keys, same nesting, no extra keys):
+{
+  "artist_name": string,
+  "instagram_handle": string|null,
+  "tour_name": string|null,
+  "contact_info": string|null,
+  "source_month": "YYYY-MM",
+  "poster_confidence": number (0-1),
+  "events": [
+    {
+      "date": "YYYY-MM-DD",
+      "event_name": string|null,
+      "venue": string|null,
+      "city": string|null,
+      "province": string|null,
+      "country": string,
+      "time": "HH:MM"|null,
+      "ticket_info": string|null,
+      "status": "active"|"cancelled"|"postponed",
+      "confidence": number (0-1)
+    }
+  ]
+}
+
+Rules:
+- Use double quotes for all keys/strings.
+- Required strings must be non-null; if unknown, use "".
+- Optional strings use null when unknown.
+- source_month must be YYYY-MM; infer from OCR text or event dates.
+- If a date is shown as DD or DD/MM, combine with source_month to form YYYY-MM-DD.
+- If a date is ambiguous or missing a day, omit that event.
+- time must be HH:MM or null. If a time range is shown, use the start time only.
+- status must be one of: active, cancelled, postponed.
+- poster_confidence and confidence must be numbers between 0 and 1.
+- Use Thailand if country is not specified.
+- Keep text as written; do not translate or invent details.
+- Do not guess venues or cities not present in the OCR text.
+
+Location extraction:
+- venue is the place name (bar/cafe/hall/stage). If the line has multiple parts, pick the venue name, not the city.
+- city is the city or district name if explicitly shown.
+- province is only set when a province name is explicitly present in the text, or when city clearly matches a province from the list below.
+- If a province name is present in the same line as the venue, set province and keep venue separate.
+- If only a province name is present, set city = province and province = province.
+
+Thailand provinces (English / Thai):
+- Amnat Charoen / อำนาจเจริญ
+- Ang Thong / อ่างทอง
+- Bangkok / กรุงเทพมหานคร
+- Bueng Kan / บึงกาฬ
+- Buri Ram / บุรีรัมย์
+- Chachoengsao / ฉะเชิงเทรา
+- Chai Nat / ชัยนาท
+- Chaiyaphum / ชัยภูมิ
+- Chanthaburi / จันทบุรี
+- Chiang Mai / เชียงใหม่
+- Chiang Rai / เชียงราย
+- Chon Buri / ชลบุรี
+- Chumphon / ชุมพร
+- Kalasin / กาฬสินธุ์
+- Kamphaeng Phet / กำแพงเพชร
+- Kanchanaburi / กาญจนบุรี
+- Khon Kaen / ขอนแก่น
+- Krabi / กระบี่
+- Lampang / ลำปาง
+- Lamphun / ลำพูน
+- Loei / เลย
+- Lop Buri / ลพบุรี
+- Mae Hong Son / แม่ฮ่องสอน
+- Maha Sarakham / มหาสารคาม
+- Mukdahan / มุกดาหาร
+- Nakhon Nayok / นครนายก
+- Nakhon Pathom / นครปฐม
+- Nakhon Phanom / นครพนม
+- Nakhon Ratchasima / นครราชสีมา
+- Nakhon Sawan / นครสวรรค์
+- Nakhon Si Thammarat / นครศรีธรรมราช
+- Nan / น่าน
+- Narathiwat / นราธิวาส
+- Nong Bua Lamphu / หนองบัวลำภู
+- Nong Khai / หนองคาย
+- Nonthaburi / นนทบุรี
+- Pathum Thani / ปทุมธานี
+- Pattani / ปัตตานี
+- Phang Nga / พังงา
+- Phatthalung / พัทลุง
+- Phayao / พะเยา
+- Phetchabun / เพชรบูรณ์
+- Phetchaburi / เพชรบุรี
+- Phichit / พิจิตร
+- Phitsanulok / พิษณุโลก
+- Phra Nakhon Si Ayutthaya / พระนครศรีอยุธยา
+- Phrae / แพร่
+- Phuket / ภูเก็ต
+- Prachin Buri / ปราจีนบุรี
+- Prachuap Khiri Khan / ประจวบคีรีขันธ์
+- Ranong / ระนอง
+- Ratchaburi / ราชบุรี
+- Rayong / ระยอง
+- Roi Et / ร้อยเอ็ด
+- Sa Kaeo / สระแก้ว
+- Sakon Nakhon / สกลนคร
+- Samut Prakan / สมุทรปราการ
+- Samut Sakhon / สมุทรสาคร
+- Samut Songkhram / สมุทรสงคราม
+- Saraburi / สระบุรี
+- Satun / สตูล
+- Sing Buri / สิงห์บุรี
+- Sisaket / ศรีสะเกษ
+- Songkhla / สงขลา
+- Sukhothai / สุโขทัย
+- Suphan Buri / สุพรรณบุรี
+- Surat Thani / สุราษฎร์ธานี
+- Surin / สุรินทร์
+- Tak / ตาก
+- Trang / ตรัง
+- Trat / ตราด
+- Ubon Ratchathani / อุบลราชธานี
+- Udon Thani / อุดรธานี
+- Uthai Thani / อุทัยธานี
+- Uttaradit / อุตรดิตถ์
+- Yala / ยะลา
+- Yasothon / ยโสธร
+
+OCR TEXT:
