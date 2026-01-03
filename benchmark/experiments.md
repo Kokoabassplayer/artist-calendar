@@ -11,10 +11,13 @@
 | 20260103-064229-20260103-125612-gemma27b-ocr-ocr-refine-normalize | gemini-gemma-3-27b-it | 83.45 | 81.58-85.30 | 1.0 | 0 | 5 | 2.308029 |
 | 20260103-062353-20260103-125612-gemma27b-ocr | gemini-gemma-3-27b-it | 83.26 | 81.42-85.09 | 1.0 | 0 | 4 | 2.308029 |
 | 20260103-074259-20260103-141302-gemma27b-ocr-parsev2 | gemini-gemma-3-27b-it | 83.15 | 81.51-84.92 | 1.0 | 0 | 3 | 2.308029 |
+| 20260103-153221-20260103-141302-gemma27b-ocr-parsev2-judge58-max | gemini-gemma-3-27b-it | 83.15 | 81.51-84.92 | 1.0 | 0 | 58 | 2.308029 |
 | 20260102-065412-20260102-123028-gemma27b-promptv2-promptv2-refine-normalize | gemini-gemma-3-27b-it | 80.45 | 78.71-82.26 | 1.0 | 0 | 9 | 2.308029 |
+| 20260103-145838-20260102-123028-gemma27b-promptv2-refine-normalize-judge58-max | gemini-gemma-3-27b-it | 80.45 | 78.71-82.26 | 1.0 | 0 | 58 | 2.308029 |
 | 20260102-063115-20260102-123028-gemma27b-promptv2-refine | gemini-gemma-3-27b-it | 80.33 | 78.61-82.13 | 1.0 | 0 | 9 | 2.308029 |
 | 20260102-060226-20260102-123028-gemma27b-promptv2 | gemini-gemma-3-27b-it | 80.11 | 78.32-82.01 | 1.0 | 0 | 7 | 2.308029 |
 | 20260102-052708-20260102-114203-gemma27b-norepair | gemini-gemma-3-27b-it | 79.52 | 77.72-81.46 | 1.0 | 0 | 9 | 2.308029 |
+| 20260103-142933-20260102-114203-gemma27b-norepair-judge58-max | gemini-gemma-3-27b-it | 79.52 | 77.72-81.46 | 1.0 | 0 | 58 | 2.308029 |
 | 20260101-084403-openrouter-free-v2 | openrouter-google_gemma-3-12b-it_free | 76.3 | 73.44-79.30 | 0.914 | 0 | 45 | 2.308029 |
 | 20260101-085946-openrouter-free-v3 | openrouter-google_gemma-3-12b-it_free | 76.3 | 73.44-79.30 | 0.914 | 0 | 45 | 2.308029 |
 | 20260101-114517-openrouter-free-v4 | openrouter-google_gemma-3-12b-it_free | 75.66 | 72.76-78.50 | 0.897 | 0 | 45 | 2.308029 |
