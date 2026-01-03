@@ -179,6 +179,14 @@ Optional: normalize province/city from existing fields:
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it
 ```
 
+Optional: normalize time formats (e.g., 16.45 → 16:45):
+```bash
+./venv_artist/bin/python benchmark/benchmark.py normalize-time \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it
+```
+
 Optional: enable OpenRouter plugins (web search + response healing):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
@@ -196,6 +204,18 @@ Optional: enable OpenRouter plugins (web search + response healing):
   --predictions benchmark/runs/$RUN_ID/predictions \
   --out benchmark/runs/$RUN_ID/judgements \
   --model openai/gpt-oss-120b:free
+```
+
+If the judge returns empty outputs on long prompts, use the compact view:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py judge \
+  --manifest benchmark/manifest.json \
+  --ground-truth benchmark/ground_truth \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --out benchmark/runs/$RUN_ID/judgements \
+  --model openai/gpt-oss-120b:free \
+  --prompt benchmark/prompts/judge_compact.txt \
+  --compact
 ```
 
 Optional: cap judge output tokens:
@@ -243,6 +263,14 @@ Optional: cap judge output tokens:
   --report-dir benchmark/runs/$RUN_ID/report \
   --out benchmark/published \
   --label $RUN_ID
+```
+
+9) Refresh the experiment ledger:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py ledger \
+  --published benchmark/published \
+  --out benchmark/experiments.csv \
+  --md benchmark/experiments.md
 ```
 
 ## Notes

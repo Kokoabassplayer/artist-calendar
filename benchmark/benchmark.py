@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import csv
 import hashlib
 import json
 import os
@@ -1409,6 +1410,56 @@ def _normalize_locations(pred: Any) -> bool:
     return changed
 
 
+def _format_time(hour: int, minute: int) -> Optional[str]:
+    if 0 <= hour < 24 and 0 <= minute < 60:
+        return f"{hour:02d}:{minute:02d}"
+    return None
+
+
+def _parse_time_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+    range_match = re.search(r"(\\d{1,2})[.:](\\d{2})\\s*[-–~]\\s*(\\d{1,2})[.:](\\d{2})", text)
+    if range_match:
+        hour = int(range_match.group(1))
+        minute = int(range_match.group(2))
+        return _format_time(hour, minute)
+    match = re.search(r"(\\d{1,2})[.:](\\d{2})", text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        return _format_time(hour, minute)
+    return None
+
+
+def _normalize_times(pred: Any) -> bool:
+    if not isinstance(pred, dict):
+        return False
+    events = pred.get("events") or []
+    if not isinstance(events, list):
+        return False
+    changed = False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        time_value = event.get("time")
+        normalized = None
+        if isinstance(time_value, str):
+            raw = time_value.strip()
+            if raw and not re.match(r"^\\d{2}:\\d{2}$", raw):
+                normalized = _parse_time_from_text(raw)
+            elif raw and re.match(r"^\\d{2}:\\d{2}$", raw):
+                normalized = None
+        if normalized is None and _is_blank(time_value):
+            ticket_info = event.get("ticket_info")
+            if isinstance(ticket_info, str):
+                normalized = _parse_time_from_text(ticket_info)
+        if normalized and normalized != time_value:
+            event["time"] = normalized
+            changed = True
+    return changed
+
+
 def _needs_location_fill(pred: Any) -> bool:
     if not isinstance(pred, dict):
         return False
@@ -1422,6 +1473,27 @@ def _needs_location_fill(pred: Any) -> bool:
             if _is_blank(event.get(field)):
                 return True
     return False
+
+
+def _compact_judge_payload(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+    events = data.get("events") or []
+    if not isinstance(events, list):
+        return {"events": []}
+    compact_events = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        compact_events.append(
+            {
+                "date": event.get("date"),
+                "venue": event.get("venue"),
+                "city": event.get("city"),
+                "province": event.get("province"),
+            }
+        )
+    return {"events": compact_events}
 
 
 def command_ground_truth(args: argparse.Namespace) -> None:
@@ -1913,6 +1985,33 @@ def command_normalize(args: argparse.Namespace) -> None:
                 json_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def command_normalize_time(args: argparse.Namespace) -> None:
+    entries = load_manifest(Path(args.manifest))
+    pred_root = Path(args.predictions)
+    if args.model_dir:
+        model_dirs = [Path(args.model_dir)]
+    else:
+        model_dirs = [p for p in sorted(pred_root.iterdir()) if p.is_dir()]
+    if not model_dirs:
+        return
+    for model_dir in model_dirs:
+        if not model_dir.exists():
+            continue
+        for entry in iter_entries(entries, args.start, args.limit):
+            if entry.get("status") != "ok":
+                continue
+            poster_id = entry["id"]
+            json_path = model_dir / f"{poster_id}.json"
+            if not json_path.exists():
+                continue
+            pred = _load_json(json_path)
+            if not isinstance(pred, dict):
+                continue
+            changed = _normalize_times(pred)
+            if changed or args.force:
+                json_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def command_judge(args: argparse.Namespace) -> None:
     prompt = read_prompt(Path(args.prompt))
     entries = load_manifest(Path(args.manifest))
@@ -1941,6 +2040,27 @@ def command_judge(args: argparse.Namespace) -> None:
 
             gt_text = gt_path.read_text(encoding="utf-8")
             pred_text = pred_path.read_text(encoding="utf-8")
+            if args.compact:
+                try:
+                    gt_data = json.loads(gt_text)
+                except Exception:
+                    gt_data = None
+                if gt_data is not None:
+                    gt_text = json.dumps(
+                        _compact_judge_payload(gt_data),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                try:
+                    pred_data = json.loads(pred_text)
+                except Exception:
+                    pred_data = None
+                if pred_data is not None:
+                    pred_text = json.dumps(
+                        _compact_judge_payload(pred_data),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
             judge_prompt = (
                 f"{prompt}\n\nGround truth JSON:\n{gt_text}\n\nPrediction JSON:\n{pred_text}\n"
             )
@@ -2837,6 +2957,168 @@ def command_publish(args: argparse.Namespace) -> None:
         note_path.write_text(args.note.strip() + "\n", encoding="utf-8")
 
 
+def _published_label(run_id: str) -> str:
+    match = re.match(r"^\\d{8}-\\d{6}-(.+)$", run_id)
+    return match.group(1) if match else run_id
+
+
+def _format_ci_range(ci: Any) -> str:
+    if isinstance(ci, (list, tuple)) and len(ci) == 2:
+        return f"{ci[0]:.2f}-{ci[1]:.2f}"
+    return ""
+
+
+def command_ledger(args: argparse.Namespace) -> None:
+    published_dir = Path(args.published)
+    out_csv = Path(args.out)
+    out_md = Path(args.md) if args.md else None
+    rows: List[Dict[str, Any]] = []
+    if not published_dir.exists():
+        raise RuntimeError(f"Published directory not found: {published_dir}")
+
+    for run_dir in sorted([p for p in published_dir.iterdir() if p.is_dir()]):
+        summary_path = run_dir / "summary.json"
+        if not summary_path.exists():
+            continue
+        try:
+            summary_data = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(summary_data, list):
+            continue
+        run_meta = {}
+        meta_path = run_dir / "run_metadata.json"
+        if meta_path.exists():
+            try:
+                run_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                run_meta = {}
+        report_meta = {}
+        report_meta_path = run_dir / "meta.json"
+        if report_meta_path.exists():
+            try:
+                report_meta = json.loads(report_meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                report_meta = {}
+
+        for row in summary_data:
+            if not isinstance(row, dict):
+                continue
+            ci = row.get("app_quality_ci95")
+            rows.append(
+                {
+                    "run_id": run_dir.name,
+                    "label": _published_label(run_dir.name),
+                    "created_at": run_meta.get("created_at"),
+                    "git_commit": run_meta.get("git_commit"),
+                    "temperature": run_meta.get("temperature"),
+                    "model": row.get("model"),
+                    "posters": row.get("posters"),
+                    "missing_predictions": row.get("missing_predictions"),
+                    "judged": row.get("judged"),
+                    "app_quality_score": row.get("app_quality_score"),
+                    "app_quality_ci95": ci if isinstance(ci, list) and len(ci) == 2 else None,
+                    "app_quality_ci95_low": ci[0] if isinstance(ci, list) and len(ci) == 2 else None,
+                    "app_quality_ci95_high": ci[1] if isinstance(ci, list) and len(ci) == 2 else None,
+                    "schema_strict_rate": row.get("schema_strict_rate"),
+                    "schema_valid_rate": row.get("schema_valid_rate"),
+                    "json_parse_rate": row.get("json_parse_rate"),
+                    "avg_top_level_score": row.get("avg_top_level_score"),
+                    "avg_event_match_score": row.get("avg_event_match_score"),
+                    "avg_event_count_score": row.get("avg_event_count_score"),
+                    "avg_location_score": row.get("avg_location_score"),
+                    "avg_venue_score": row.get("avg_venue_score"),
+                    "avg_missing_field_rate": row.get("avg_missing_field_rate"),
+                    "avg_date_f1": row.get("avg_date_f1"),
+                    "prediction_cost_usd": row.get("prediction_cost_usd"),
+                    "judge_cost_usd": row.get("judge_cost_usd"),
+                    "ground_truth_cost_usd": row.get("ground_truth_cost_usd"),
+                    "total_cost_usd": row.get("total_cost_usd"),
+                    "urls_sha256": run_meta.get("urls_sha256"),
+                    "manifest_sha256": run_meta.get("manifest_sha256"),
+                    "bootstrap_seed": (report_meta.get("bootstrap") or {}).get("seed"),
+                    "prompt_hashes": report_meta.get("prompt_hashes"),
+                }
+            )
+
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "run_id",
+        "label",
+        "created_at",
+        "git_commit",
+        "temperature",
+        "model",
+        "posters",
+        "missing_predictions",
+        "judged",
+        "app_quality_score",
+        "app_quality_ci95",
+        "app_quality_ci95_low",
+        "app_quality_ci95_high",
+        "schema_strict_rate",
+        "schema_valid_rate",
+        "json_parse_rate",
+        "avg_top_level_score",
+        "avg_event_match_score",
+        "avg_event_count_score",
+        "avg_location_score",
+        "avg_venue_score",
+        "avg_missing_field_rate",
+        "avg_date_f1",
+        "prediction_cost_usd",
+        "judge_cost_usd",
+        "ground_truth_cost_usd",
+        "total_cost_usd",
+        "urls_sha256",
+        "manifest_sha256",
+        "bootstrap_seed",
+        "prompt_hashes",
+    ]
+    with out_csv.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+    if out_md:
+        rows_sorted = sorted(
+            rows,
+            key=lambda item: item.get("app_quality_score") if isinstance(item.get("app_quality_score"), (int, float)) else -1,
+            reverse=True,
+        )
+        headers = [
+            "run_id",
+            "model",
+            "app_quality_score",
+            "app_quality_ci95",
+            "schema_strict_rate",
+            "missing_predictions",
+            "judged",
+            "total_cost_usd",
+        ]
+        lines = ["# Experiment Ledger", "", "| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+        for row in rows_sorted:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(row.get("run_id", "")),
+                        str(row.get("model", "")),
+                        f"{row.get('app_quality_score', '')}",
+                        _format_ci_range(row.get("app_quality_ci95")),
+                        f"{row.get('schema_strict_rate', '')}",
+                        f"{row.get('missing_predictions', '')}",
+                        f"{row.get('judged', '')}",
+                        f"{row.get('total_cost_usd', '')}",
+                    ]
+                )
+                + " |"
+            )
+        out_md.parent.mkdir(parents=True, exist_ok=True)
+        out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def command_interpret(args: argparse.Namespace) -> None:
     report_dir = Path(args.report_dir)
     summary_path = report_dir / "summary.json"
@@ -3104,6 +3386,15 @@ def build_parser() -> argparse.ArgumentParser:
     normalize.add_argument("--force", action="store_true", help="Write outputs even if unchanged.")
     normalize.set_defaults(func=command_normalize)
 
+    normalize_time = sub.add_parser("normalize-time", help="Normalize time fields in prediction JSON.")
+    normalize_time.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    normalize_time.add_argument("--predictions", required=True, help="Predictions root directory.")
+    normalize_time.add_argument("--model-dir", help="Specific model directory to normalize.")
+    normalize_time.add_argument("--limit", type=int, help="Limit number of posters.")
+    normalize_time.add_argument("--start", type=int, default=0, help="Start index.")
+    normalize_time.add_argument("--force", action="store_true", help="Write outputs even if unchanged.")
+    normalize_time.set_defaults(func=command_normalize_time)
+
     judge = sub.add_parser("judge", help="Judge predictions with OpenRouter.")
     judge.add_argument("--manifest", required=True, help="Manifest JSON path.")
     judge.add_argument("--ground-truth", required=True, help="Ground truth directory.")
@@ -3123,6 +3414,11 @@ def build_parser() -> argparse.ArgumentParser:
     judge.add_argument("--seed", type=int, default=DEFAULT_SEED)
     judge.add_argument("--timeout", type=float, default=DEFAULT_OPENROUTER_TIMEOUT)
     judge.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
+    judge.add_argument(
+        "--compact",
+        action="store_true",
+        help="Judge with a compact JSON view (date/venue/city/province only).",
+    )
     judge.add_argument("--force", action="store_true", help="Overwrite existing outputs.")
     judge.set_defaults(func=command_judge)
 
@@ -3158,6 +3454,12 @@ def build_parser() -> argparse.ArgumentParser:
     publish.add_argument("--manifest", default="benchmark/manifest.json", help="Manifest file.")
     publish.add_argument("--note", help="Optional markdown note to include.")
     publish.set_defaults(func=command_publish)
+
+    ledger = sub.add_parser("ledger", help="Build a dataset of published runs.")
+    ledger.add_argument("--published", default="benchmark/published", help="Published runs directory.")
+    ledger.add_argument("--out", default="benchmark/experiments.csv", help="Output CSV path.")
+    ledger.add_argument("--md", default="benchmark/experiments.md", help="Optional markdown summary path.")
+    ledger.set_defaults(func=command_ledger)
 
     return parser
 

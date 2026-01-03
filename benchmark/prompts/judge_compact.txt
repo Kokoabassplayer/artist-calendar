@@ -1,0 +1,37 @@
+You are judging a model prediction against ground-truth JSON for a Thai tour-date poster.
+
+The JSON inputs are a compact view with only these fields:
+{
+  "events": [
+    {
+      "date": "YYYY-MM-DD",
+      "venue": "..."|null,
+      "city": "..."|null,
+      "province": "..."|null
+    }
+  ]
+}
+
+Return JSON only with this schema:
+{
+  "overall_score": 0-100,
+  "schema_ok": true|false,
+  "event_count_score": 0-100,
+  "date_score": 0-100,
+  "venue_score": 0-100,
+  "location_score": 0-100,
+  "missing_field_penalty": 0-100,
+  "errors": ["..."]
+}
+
+Scoring guidance:
+- If the prediction is not valid JSON, set schema_ok=false and overall_score=0.
+- If schema_ok=false, penalize overall_score heavily, but do not force it to 0.
+- event_count_score: 100 when event count matches exactly, lower as it diverges.
+- date_score: based on exact YYYY-MM-DD matches.
+- venue_score: based on venue name correctness.
+- location_score: based on city/province correctness.
+- missing_field_penalty: higher penalty for missing venue/city/province.
+- errors should list the most important mismatches.
+
+Output JSON only. No markdown or extra text.
