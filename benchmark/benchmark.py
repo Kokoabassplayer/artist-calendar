@@ -371,6 +371,28 @@ def _looks_like_venue(text: Any) -> bool:
     return False
 
 
+def _split_event_name_for_venue(text: Any) -> Tuple[Optional[str], Optional[str]]:
+    if not isinstance(text, str):
+        return None, None
+    stripped = text.strip()
+    if not stripped:
+        return None, None
+    patterns = [
+        r"\\s*@\\s*",
+        r"\\s+at\\s+",
+        r"\\s+ณ\\s+",
+        r"\\s+ที่\\s+",
+    ]
+    for pattern in patterns:
+        parts = re.split(pattern, stripped, maxsplit=1, flags=re.IGNORECASE)
+        if len(parts) == 2:
+            left = parts[0].strip()
+            right = parts[1].strip()
+            if right:
+                return left or None, right
+    return None, None
+
+
 def read_lines(path: Path) -> List[str]:
     lines = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -1245,9 +1267,17 @@ def _normalize_locations(pred: Any) -> bool:
     for event in events:
         if not isinstance(event, dict):
             continue
-        if _is_blank(event.get("venue")) and _looks_like_venue(event.get("event_name")):
-            event["venue"] = event.get("event_name")
-            changed = True
+        if _is_blank(event.get("venue")):
+            name = event.get("event_name")
+            left, right = _split_event_name_for_venue(name)
+            if right:
+                event["venue"] = right
+                if left is not None:
+                    event["event_name"] = left
+                changed = True
+            elif _looks_like_venue(name):
+                event["venue"] = name
+                changed = True
         province = event.get("province")
         city = event.get("city")
         filled_province = False
