@@ -89,6 +89,21 @@ Optional: OCR-first pipeline (Gemini):
   --tokens-per-request 520
 ```
 
+Optional: fill missing locations from OCR text:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py fill-locations \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --ocr benchmark/runs/$RUN_ID/ocr \
+  --model gemma-3-27b-it \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --prompt benchmark/prompts/fill_locations.txt \
+  --parallel 4 \
+  --rpm 30 \
+  --tpm 15000 \
+  --tokens-per-request 520
+```
+
 Optional: run the full candidate list (expect some to fail if not vision-capable):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \

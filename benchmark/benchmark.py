@@ -1158,6 +1158,115 @@ def command_parse_ocr(args: argparse.Namespace) -> None:
         executor.map(_parse_entry, iter_entries(entries, args.start, args.limit))
 
 
+def command_fill_locations(args: argparse.Namespace) -> None:
+    prompt = read_prompt(Path(args.prompt))
+    entries = load_manifest(Path(args.manifest))
+    pred_root = Path(args.predictions)
+    ocr_dir = Path(args.ocr)
+    if args.model_dir:
+        model_dirs = [Path(args.model_dir)]
+    else:
+        model_dirs = [p for p in sorted(pred_root.iterdir()) if p.is_dir()]
+    if not model_dirs:
+        return
+    max_output_tokens = _resolve_max_output(args.max_output, kind="gemini", model=args.model)
+    tokens_estimate = args.tokens_per_request
+    if tokens_estimate is None and (args.rpm or args.tpm):
+        tokens_estimate = _estimate_gemini_tokens(max_output_tokens)
+    rate_limiter = None
+    if args.rpm or args.tpm:
+        rate_limiter = RateLimiter(args.rpm, args.tpm, tokens_estimate)
+
+    def _fill_entry(entry: Dict[str, Any], model_dir: Path) -> None:
+        if entry.get("status") != "ok":
+            return
+        poster_id = entry["id"]
+        json_path = model_dir / f"{poster_id}.json"
+        if not json_path.exists():
+            return
+        pred = _load_json(json_path)
+        if not args.force and not _needs_location_fill(pred):
+            return
+        ocr_path = ocr_dir / f"{poster_id}.txt"
+        if not ocr_path.exists():
+            return
+        ocr_text = ocr_path.read_text(encoding="utf-8")
+        if rate_limiter:
+            rate_limiter.acquire(tokens_estimate)
+        try:
+            existing_json = json.dumps(pred, ensure_ascii=False, indent=2)
+            loc_prompt = f"{prompt}\n{existing_json}\n"
+            raw_text, model_meta = gemini_text_chat(
+                f"models/{args.model}" if not args.model.startswith("models/") else args.model,
+                loc_prompt,
+                ocr_text,
+                DEFAULT_TEMPERATURE,
+                args.seed,
+                max_output_tokens,
+            )
+        except Exception as exc:
+            error_path = model_dir / f"{poster_id}.locfill.error.json"
+            error_path.write_text(
+                json.dumps({"locfill_error": str(exc), "ocr_path": str(ocr_path)}, indent=2),
+                encoding="utf-8",
+            )
+            return
+
+        loc_raw_path = model_dir / f"{poster_id}.locfill.raw.txt"
+        loc_raw_path.write_text(raw_text, encoding="utf-8")
+        if model_meta:
+            loc_meta_path = model_dir / f"{poster_id}.locfill.meta.json"
+            meta_out = {
+                "model": f"gemini:{args.model}",
+                "seed": args.seed,
+                "max_output_tokens": max_output_tokens,
+                "ocr_path": str(ocr_path),
+            }
+            meta_out.update(model_meta)
+            loc_meta_path.write_text(json.dumps(meta_out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        parsed = extract_json(raw_text)
+        if not isinstance(parsed, dict) or not _schema_valid(parsed, strict=True):
+            error_path = model_dir / f"{poster_id}.locfill.error.json"
+            error_payload: Dict[str, Any] = {"locfill_raw_path": str(loc_raw_path)}
+            if parsed is None:
+                error_payload["locfill_parse_error"] = "invalid_json"
+            else:
+                error_payload["locfill_schema_error"] = "strict_schema_invalid"
+            error_path.write_text(json.dumps(error_payload, indent=2), encoding="utf-8")
+            return
+
+        pred_events = pred.get("events") if isinstance(pred, dict) else None
+        new_events = parsed.get("events")
+        if not isinstance(pred_events, list) or not isinstance(new_events, list) or len(pred_events) != len(new_events):
+            error_path = model_dir / f"{poster_id}.locfill.error.json"
+            error_path.write_text(
+                json.dumps({"locfill_error": "event_count_mismatch", "locfill_raw_path": str(loc_raw_path)}, indent=2),
+                encoding="utf-8",
+            )
+            return
+
+        updated = False
+        for old_event, new_event in zip(pred_events, new_events):
+            if not isinstance(old_event, dict) or not isinstance(new_event, dict):
+                continue
+            for field in ("venue", "city", "province", "country"):
+                if _is_blank(old_event.get(field)) and not _is_blank(new_event.get(field)):
+                    old_event[field] = new_event.get(field)
+                    updated = True
+        if updated:
+            json_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    for model_dir in model_dirs:
+        if not model_dir.exists():
+            continue
+        with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as executor:
+            executor.map(
+                lambda entry: _fill_entry(entry, model_dir),
+                iter_entries(entries, args.start, args.limit),
+            )
+
+
 def _save_raw_and_json(
     out_dir: Path, poster_id: str, raw_text: str, meta: Optional[Dict[str, Any]] = None
 ) -> Tuple[Path, Optional[Any]]:
@@ -1298,6 +1407,21 @@ def _normalize_locations(pred: Any) -> bool:
             event["city"] = event.get("province")
             changed = True
     return changed
+
+
+def _needs_location_fill(pred: Any) -> bool:
+    if not isinstance(pred, dict):
+        return False
+    events = pred.get("events") or []
+    if not isinstance(events, list):
+        return False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        for field in ("venue", "city", "province"):
+            if _is_blank(event.get(field)):
+                return True
+    return False
 
 
 def command_ground_truth(args: argparse.Namespace) -> None:
@@ -2819,6 +2943,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prompt file used for JSON repair.",
     )
     parse_ocr.set_defaults(func=command_parse_ocr)
+
+    fill_locations = sub.add_parser("fill-locations", help="Fill missing location fields from OCR.")
+    fill_locations.add_argument("--manifest", required=True, help="Manifest JSON path.")
+    fill_locations.add_argument("--predictions", required=True, help="Predictions root directory.")
+    fill_locations.add_argument("--ocr", required=True, help="OCR directory with .txt files.")
+    fill_locations.add_argument("--model", required=True, help="Gemini model ID.")
+    fill_locations.add_argument("--model-dir", help="Specific model directory to fill.")
+    fill_locations.add_argument("--prompt", default="benchmark/prompts/fill_locations.txt")
+    fill_locations.add_argument("--limit", type=int, help="Limit number of posters.")
+    fill_locations.add_argument("--start", type=int, default=0, help="Start index.")
+    fill_locations.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    fill_locations.add_argument(
+        "--max-output",
+        default="max",
+        help="Max output tokens for location fill (Gemini). Use an int or 'max'.",
+    )
+    fill_locations.add_argument("--parallel", type=int, default=4, help="Parallel workers for fill.")
+    fill_locations.add_argument("--rpm", type=int, help="Requests per minute limit for fill.")
+    fill_locations.add_argument("--tpm", type=int, help="Tokens per minute limit for fill.")
+    fill_locations.add_argument("--tokens-per-request", type=int, help="Estimated tokens per fill request.")
+    fill_locations.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
+    fill_locations.add_argument("--force", action="store_true", help="Force fill even if not needed.")
+    fill_locations.set_defaults(func=command_fill_locations)
 
     ground = sub.add_parser("ground-truth", help="Generate ground truth with OpenRouter.")
     ground.add_argument("--manifest", required=True, help="Manifest JSON path.")

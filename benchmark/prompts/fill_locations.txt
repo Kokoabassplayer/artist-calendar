@@ -1,0 +1,14 @@
+You are given OCR text and an existing JSON extraction.
+Your task is to fill missing location fields ONLY (venue, city, province, country).
+Do not change any other fields, do not change event order, and do not add or remove events.
+
+Return a single JSON object and nothing else. No markdown or code fences.
+Follow the schema exactly (same keys, same nesting, no extra keys).
+
+Rules:
+- If a location field is already present (non-empty), keep it unchanged.
+- Only fill location fields when the OCR text explicitly contains that information.
+- If you cannot find a location for an event, keep it null/empty.
+- Do not guess; do not infer beyond explicit text.
+
+EXISTING JSON:
