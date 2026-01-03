@@ -1192,8 +1192,13 @@ def command_fill_locations(args: argparse.Namespace) -> None:
         json_path = model_dir / f"{poster_id}.json"
         if not json_path.exists():
             return
+        error_path = model_dir / f"{poster_id}.locfill.error.json"
+        if args.retry_errors and not error_path.exists():
+            return
         pred = _load_json(json_path)
         if not args.force and not _needs_location_fill(pred):
+            if error_path.exists():
+                error_path.unlink()
             return
         ocr_path = ocr_dir / f"{poster_id}.txt"
         if not ocr_path.exists():
@@ -1213,7 +1218,6 @@ def command_fill_locations(args: argparse.Namespace) -> None:
                 max_output_tokens,
             )
         except Exception as exc:
-            error_path = model_dir / f"{poster_id}.locfill.error.json"
             error_path.write_text(
                 json.dumps({"locfill_error": str(exc), "ocr_path": str(ocr_path)}, indent=2),
                 encoding="utf-8",
@@ -1235,7 +1239,6 @@ def command_fill_locations(args: argparse.Namespace) -> None:
 
         parsed = extract_json(raw_text)
         if not isinstance(parsed, dict) or not _schema_valid(parsed, strict=True):
-            error_path = model_dir / f"{poster_id}.locfill.error.json"
             error_payload: Dict[str, Any] = {"locfill_raw_path": str(loc_raw_path)}
             if parsed is None:
                 error_payload["locfill_parse_error"] = "invalid_json"
@@ -1247,7 +1250,6 @@ def command_fill_locations(args: argparse.Namespace) -> None:
         pred_events = pred.get("events") if isinstance(pred, dict) else None
         new_events = parsed.get("events")
         if not isinstance(pred_events, list) or not isinstance(new_events, list) or len(pred_events) != len(new_events):
-            error_path = model_dir / f"{poster_id}.locfill.error.json"
             error_path.write_text(
                 json.dumps({"locfill_error": "event_count_mismatch", "locfill_raw_path": str(loc_raw_path)}, indent=2),
                 encoding="utf-8",
@@ -1264,6 +1266,8 @@ def command_fill_locations(args: argparse.Namespace) -> None:
                     updated = True
         if updated:
             json_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
+        if error_path.exists():
+            error_path.unlink()
 
     for model_dir in model_dirs:
         if not model_dir.exists():
@@ -3314,6 +3318,11 @@ def build_parser() -> argparse.ArgumentParser:
     fill_locations.add_argument("--tokens-per-request", type=int, help="Estimated tokens per fill request.")
     fill_locations.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
     fill_locations.add_argument("--force", action="store_true", help="Force fill even if not needed.")
+    fill_locations.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help="Only rerun posters that have a .locfill.error.json file.",
+    )
     fill_locations.set_defaults(func=command_fill_locations)
 
     ground = sub.add_parser("ground-truth", help="Generate ground truth with OpenRouter.")

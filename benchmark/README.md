@@ -104,6 +104,17 @@ Optional: fill missing locations from OCR text:
   --tokens-per-request 520
 ```
 
+Rerun only failed location fills:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py fill-locations \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --ocr benchmark/runs/$RUN_ID/ocr \
+  --model gemma-3-27b-it \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --retry-errors
+```
+
 Optional: run the full candidate list (expect some to fail if not vision-capable):
 ```bash
 ./venv_artist/bin/python benchmark/benchmark.py predict \
