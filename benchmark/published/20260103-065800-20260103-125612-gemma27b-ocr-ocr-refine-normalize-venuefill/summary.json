@@ -1,0 +1,31 @@
+[
+  {
+    "model": "gemini-gemma-3-27b-it",
+    "posters": 58,
+    "missing_predictions": 0,
+    "judged": 6,
+    "app_quality_score": 83.74,
+    "app_quality_ci95": [
+      81.95,
+      85.58
+    ],
+    "app_quality_std": 6.983,
+    "avg_score": 45.0,
+    "schema_ok_rate": 1.0,
+    "schema_valid_rate": 1.0,
+    "schema_strict_rate": 1.0,
+    "json_parse_rate": 1.0,
+    "avg_top_level_score": 0.738,
+    "avg_event_match_score": 0.737,
+    "avg_event_count_score": 0.986,
+    "avg_location_score": 0.747,
+    "avg_venue_score": 0.667,
+    "avg_missing_field_rate": 0.299,
+    "avg_event_diff": 0.293,
+    "avg_date_f1": 0.748,
+    "prediction_cost_usd": 0,
+    "judge_cost_usd": 0.0,
+    "ground_truth_cost_usd": 2.308029,
+    "total_cost_usd": 2.308029
+  }
+]
