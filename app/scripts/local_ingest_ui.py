@@ -1067,7 +1067,7 @@ def _infer_source_type(url: str) -> str:
 
 
 def _poster_image_warning(
-    image_url: str, source_url: str | None, raw_json: str | None
+    image_url: str | None, source_url: str | None, raw_json: str | None
 ) -> str | None:
     if not source_url:
         return None
@@ -1081,6 +1081,8 @@ def _poster_image_warning(
         except Exception:
             source_image_url = None
     check_url = source_image_url or image_url
+    if not check_url or not isinstance(check_url, str):
+        return None
     if "p1080x1080" in check_url or "s640x640" in check_url:
         return (
             "Instagram only provides a square crop for this post. "
@@ -1293,7 +1295,9 @@ def uploads(filename: str):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
-def _image_src(image_url: str) -> str:
+def _image_src(image_url: str | None) -> str:
+    if not image_url or not isinstance(image_url, str):
+        return ""
     if image_url.startswith("http://") or image_url.startswith("https://"):
         return image_url
     try:
