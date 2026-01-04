@@ -17,8 +17,9 @@ pip install -r requirements.txt
 ## Environment variables
 
 - `GEMINI_API_KEY` (required)
-- `GEMINI_MODEL` (optional, default: `models/gemini-flash-latest`)
+- `GEMINI_MODEL` (optional, default: `models/gemma-3-27b-it`)
 - `LOCAL_DB_PATH` (optional, default: `app/output/local.db`)
+- `REPAIR_MISSING_CORE` (optional, `1` triggers a second-pass fill for missing date/venue/city/province)
 - `KEEP_REMOTE_DOWNLOADS` (optional, `1` keeps remote images on disk)
 - `REMOTE_CACHE_MAX_FILES` (optional, default: `200`)
 - `JINA_API_KEY` (optional, improves URL image scraping fallback)

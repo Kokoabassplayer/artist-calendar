@@ -22,4 +22,4 @@ There is no automated test suite yet. Use a quick manual smoke check: run the UI
 Commit messages are short, imperative, sentence case (e.g., “Refine extraction confidence and outputs”). PRs should include a brief summary, verification steps, and screenshots for UI changes.
 
 ## Configuration & Secrets
-Set credentials via `.env` or environment: `GEMINI_API_KEY` (required), `GEMINI_MODEL` and `JINA_API_KEY` (optional), plus runtime knobs like `LOCAL_DB_PATH`, `KEEP_REMOTE_DOWNLOADS`, and `REMOTE_CACHE_MAX_FILES`. Never commit `.env` or generated output directories.
+Set credentials via `.env` or environment: `GEMINI_API_KEY` (required), `GEMINI_MODEL`, `REPAIR_MISSING_CORE`, and `JINA_API_KEY` (optional), plus runtime knobs like `LOCAL_DB_PATH`, `KEEP_REMOTE_DOWNLOADS`, and `REMOTE_CACHE_MAX_FILES`. Never commit `.env` or generated output directories.

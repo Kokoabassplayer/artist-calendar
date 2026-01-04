@@ -2,6 +2,7 @@ import argparse
 import json
 import mimetypes
 import re
+from pathlib import Path
 from typing import Optional, List, TypedDict
 
 from google import genai
@@ -35,6 +36,7 @@ class TourData(TypedDict):
 
 _CLIENT: Optional[genai.Client] = None
 MODEL_NAME = Config.GEMINI_MODEL
+REPAIR_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "refine_missing_fields.txt"
 
 
 def _get_client() -> genai.Client:
@@ -415,6 +417,45 @@ def _normalize_tour_data(data: dict) -> dict:
     return data
 
 
+def _has_missing_core_fields(data: dict) -> bool:
+    events = data.get("events") or []
+    if not isinstance(events, list):
+        return True
+    for event in events:
+        if not isinstance(event, dict):
+            return True
+        for field in ("date", "venue", "city", "province"):
+            value = event.get(field)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                return True
+    return False
+
+
+def _repair_missing_core_fields(image_path: str, data: dict) -> Optional[dict]:
+    if not REPAIR_PROMPT_PATH.exists():
+        return None
+    prompt = REPAIR_PROMPT_PATH.read_text(encoding="utf-8")
+    config = types.GenerateContentConfig(
+        temperature=0.1,
+        maxOutputTokens=8192,
+        responseMimeType="application/json",
+        responseSchema=TourData,
+        systemInstruction=prompt,
+    )
+    mime_type = _guess_mime_type(image_path) or "image/jpeg"
+    uploaded_file = upload_to_gemini(image_path, mime_type=mime_type)
+    client = _get_client()
+    response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents=[uploaded_file, json.dumps(data, ensure_ascii=False)],
+        config=config,
+    )
+    repaired = json.loads(response.text or "{}")
+    if isinstance(repaired, dict):
+        return repaired
+    return None
+
+
 def image_to_structured(image_path: str) -> TourData:
     config = types.GenerateContentConfig(
         temperature=0.1,
@@ -446,7 +487,12 @@ def image_to_structured(image_path: str) -> TourData:
     )
     data = json.loads(response.text or "{}")
     if isinstance(data, dict):
-        return _normalize_tour_data(data)
+        normalized = _normalize_tour_data(data)
+        if Config.REPAIR_MISSING_CORE and _has_missing_core_fields(normalized):
+            repaired = _repair_missing_core_fields(image_path, normalized)
+            if isinstance(repaired, dict):
+                normalized = _normalize_tour_data(repaired)
+        return normalized
     return data
 
 

@@ -31,7 +31,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--model",
-        default="models/gemini-flash-latest",
+        default="models/gemma-3-27b-it",
         help="Gemini model name.",
     )
     args = parser.parse_args()

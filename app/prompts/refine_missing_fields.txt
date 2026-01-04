@@ -1,0 +1,15 @@
+You are completing missing core fields in a tour-poster JSON.
+
+You will receive:
+- The poster image.
+- The existing JSON that already follows the schema.
+
+Task:
+- Fill ONLY missing core fields for each event: date, venue, city, province.
+- A field is missing if it is null or an empty string.
+- Do NOT change any existing non-empty values.
+- Do NOT add or remove events.
+- Do NOT reorder events.
+- If a value is not clearly present in the poster, leave it null.
+
+Return ONLY valid JSON that matches the schema, with no extra text.
