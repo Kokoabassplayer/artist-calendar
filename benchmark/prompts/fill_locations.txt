@@ -11,4 +11,9 @@ Rules:
 - If you cannot find a location for an event, keep it null/empty.
 - Do not guess; do not infer beyond explicit text.
 
+Date-first matching:
+- Anchor each event to its date. Use OCR lines that contain the same day/month as the event date.
+- Only use the same line as the date or the immediate adjacent line for location text.
+- If multiple possible lines match a date, leave the location fields empty.
+
 EXISTING JSON:

@@ -216,6 +216,7 @@ def _parse_max_tokens(value: Optional[str]) -> Optional[int]:
 
 
 _OLLAMA_CONTEXT_CACHE: Dict[str, int] = {}
+_GEMINI_OUTPUT_LIMIT_CACHE: Dict[str, int] = {}
 
 
 def _ollama_context_length(model: str) -> Optional[int]:
@@ -237,6 +238,36 @@ def _ollama_context_length(model: str) -> Optional[int]:
     length = int(match.group(1))
     _OLLAMA_CONTEXT_CACHE[model] = length
     return length
+
+
+def _gemini_model_name(model: Optional[str]) -> Optional[str]:
+    if not model:
+        return None
+    return model if model.startswith("models/") else f"models/{model}"
+
+
+def _gemini_output_limit(model: Optional[str]) -> Optional[int]:
+    name = _gemini_model_name(model)
+    if not name:
+        return None
+    cached = _GEMINI_OUTPUT_LIMIT_CACHE.get(name)
+    if cached:
+        return cached
+    if genai is None:
+        return None
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        client = genai.Client(api_key=api_key)
+        info = client.models.get(model=name)
+    except Exception:
+        return None
+    limit = getattr(info, "output_token_limit", None)
+    if isinstance(limit, int) and limit > 0:
+        _GEMINI_OUTPUT_LIMIT_CACHE[name] = limit
+        return limit
+    return None
 
 
 def _load_plugins_config(value: Optional[str]) -> Optional[List[Dict[str, Any]]]:
@@ -263,6 +294,10 @@ def _resolve_max_output(
     if value is None:
         return None
     text = str(value).strip().lower()
+    if text in {"max", "auto", "none"}:
+        if text == "max" and kind == "gemini":
+            return _gemini_output_limit(model)
+        return None
     if text == "half":
         if kind == "ollama":
             length = context_override
@@ -1909,8 +1944,13 @@ def command_refine(args: argparse.Namespace) -> None:
         json_path = model_dir / f"{poster_id}.json"
         if not json_path.exists():
             return
+        error_path = model_dir / f"{poster_id}.refine.error.json"
+        if args.retry_errors and not error_path.exists():
+            return
         pred = _load_json(json_path)
         if not args.force and not _needs_refine(pred):
+            if error_path.exists():
+                error_path.unlink()
             return
         if rate_limiter:
             rate_limiter.acquire(tokens_estimate)
@@ -1948,8 +1988,9 @@ def command_refine(args: argparse.Namespace) -> None:
         parsed = extract_json(raw_text)
         if parsed is not None and _schema_valid(parsed, strict=True):
             json_path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+            if error_path.exists():
+                error_path.unlink()
         else:
-            error_path = model_dir / f"{poster_id}.refine.error.json"
             error_payload: Dict[str, Any] = {"refine_raw_path": str(refine_raw_path)}
             if parsed is None:
                 error_payload["refine_parse_error"] = "invalid_json"
@@ -3451,6 +3492,11 @@ def build_parser() -> argparse.ArgumentParser:
     refine.add_argument("--tokens-per-request", type=int, help="Estimated tokens per refine request.")
     refine.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
     refine.add_argument("--force", action="store_true", help="Force refinement even if not needed.")
+    refine.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help="Only rerun posters that have a .refine.error.json file.",
+    )
     refine.set_defaults(func=command_refine)
 
     normalize = sub.add_parser("normalize", help="Normalize locations in prediction JSON.")

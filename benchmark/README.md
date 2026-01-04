@@ -70,10 +70,9 @@ Optional: OCR-first pipeline (Gemini):
   --out benchmark/runs/$RUN_ID/ocr \
   --model gemma-3-27b-it \
   --prompt benchmark/prompts/ocr.txt \
-  --parallel 4 \
-  --rpm 30 \
-  --tpm 15000 \
-  --tokens-per-request 520
+  --max-output max \
+  --parallel 1 \
+  --rpm 6
 
 ./venv_artist/bin/python benchmark/benchmark.py parse-ocr \
   --manifest benchmark/manifest.json \
@@ -83,10 +82,9 @@ Optional: OCR-first pipeline (Gemini):
   --prompt benchmark/prompts/parse_ocr.txt \
   --repair-json \
   --repair-prompt benchmark/prompts/repair_json.txt \
-  --parallel 4 \
-  --rpm 30 \
-  --tpm 15000 \
-  --tokens-per-request 520
+  --max-output max \
+  --parallel 1 \
+  --rpm 6
 ```
 
 Optional: fill missing locations from OCR text:
@@ -98,10 +96,9 @@ Optional: fill missing locations from OCR text:
   --model gemma-3-27b-it \
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --prompt benchmark/prompts/fill_locations.txt \
-  --parallel 4 \
-  --rpm 30 \
-  --tpm 15000 \
-  --tokens-per-request 520
+  --max-output max \
+  --parallel 1 \
+  --rpm 6
 ```
 
 Rerun only failed location fills:
@@ -112,6 +109,8 @@ Rerun only failed location fills:
   --ocr benchmark/runs/$RUN_ID/ocr \
   --model gemma-3-27b-it \
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --max-output max \
+  --rpm 6 \
   --retry-errors
 ```
 
@@ -149,10 +148,9 @@ Optional: run Gemini in parallel with rate limits:
   --manifest benchmark/manifest.json \
   --out benchmark/runs/$RUN_ID/predictions \
   --models gemini:gemma-3-27b-it \
-  --parallel 4 \
-  --rpm 30 \
-  --tpm 15000 \
-  --tokens-per-request 2500
+  --max-output max \
+  --parallel 1 \
+  --rpm 6
 ```
 
 Optional: repair strict-schema JSON after predictions:
@@ -162,10 +160,9 @@ Optional: repair strict-schema JSON after predictions:
   --predictions benchmark/runs/$RUN_ID/predictions \
   --model gemma-3-27b-it \
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
-  --parallel 4 \
-  --rpm 30 \
-  --tpm 15000 \
-  --tokens-per-request 1000
+  --max-output max \
+  --parallel 1 \
+  --rpm 6
 ```
 
 Optional: refine predictions with image + JSON (fills missing fields):
@@ -176,10 +173,21 @@ Optional: refine predictions with image + JSON (fills missing fields):
   --model gemma-3-27b-it \
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --prompt benchmark/prompts/refine_v1.txt \
-  --parallel 4 \
-  --rpm 30 \
-  --tpm 15000 \
-  --tokens-per-request 1000
+  --max-output max \
+  --parallel 1 \
+  --rpm 6
+```
+
+Rerun only failed refine calls:
+```bash
+./venv_artist/bin/python benchmark/benchmark.py refine \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --model gemma-3-27b-it \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --max-output max \
+  --rpm 6 \
+  --retry-errors
 ```
 
 Optional: normalize province/city from existing fields:
@@ -291,7 +299,7 @@ Optional: cap judge output tokens:
 - `schema_valid_rate` checks required keys + basic formats; `schema_strict_rate` also forbids extra keys.
 - All model calls use temperature 0.2 (see `DEFAULT_TEMPERATURE` in `benchmark/benchmark.py`).
 - For OpenRouter steps, `--max-output max` uses the model's advertised max completion limit.
-- For OpenRouter predictions, `--max-output max` uses the model's advertised completion limit.
+- For Gemini steps, `--max-output max` resolves to the model `output_token_limit`.
 - Use `--timeout` to raise OpenRouter request timeout.
 - Use `--seed` to fix randomness (default: 23).
 - Report outputs include `comparisons.md` with bootstrap CIs for pairwise model deltas.
