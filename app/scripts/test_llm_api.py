@@ -9,7 +9,7 @@ try:
 except ImportError as exc:
     print(
         "Missing google-genai. Run this script with the project venv:\n"
-        "  ./venv_artist/bin/python scripts/test_llm_api.py\n"
+        "  ./venv_artist/bin/python app/scripts/test_llm_api.py\n"
         "Or install dependencies:\n"
         "  pip install -r requirements.txt",
         file=sys.stderr,

@@ -17,7 +17,7 @@ def main() -> None:
     parser.add_argument("input", help="Path to structured JSON file.")
     parser.add_argument(
         "--db",
-        default="output/local.db",
+        default=str(PROJECT_ROOT / "output" / "local.db"),
         help="Path to local SQLite database file.",
     )
     parser.add_argument(

@@ -18,17 +18,21 @@ pip install -r requirements.txt
 
 - `GEMINI_API_KEY` (required)
 - `GEMINI_MODEL` (optional, default: `models/gemini-flash-latest`)
-- `LOCAL_DB_PATH` (optional, default: `output/local.db`)
+- `LOCAL_DB_PATH` (optional, default: `app/output/local.db`)
 - `KEEP_REMOTE_DOWNLOADS` (optional, `1` keeps remote images on disk)
 - `REMOTE_CACHE_MAX_FILES` (optional, default: `200`)
 - `JINA_API_KEY` (optional, improves URL image scraping fallback)
 
 Create a `.env` file or export variables before running.
 
+## Repository layout
+- `app/`: local ingestion app (CLI + Flask UI + SQLite schema).
+- `benchmark/`: poster extraction benchmark tooling and reports.
+
 ## Run the app
 
 ```bash
-python scripts/local_ingest_ui.py
+python app/scripts/local_ingest_ui.py
 ```
 
 Open `http://127.0.0.1:5001` in your browser.
@@ -44,22 +48,22 @@ python -m playwright install chromium
 - Extract structured data:
 
 ```bash
-python src/image_to_structured.py path/to/poster.jpg --output output/poster.json
+python app/src/image_to_structured.py path/to/poster.jpg --output app/output/poster.json
 ```
 
 - Ingest structured JSON into SQLite:
 
 ```bash
-python scripts/ingest_local.py output/poster.json --db output/local.db
+python app/scripts/ingest_local.py app/output/poster.json --db app/output/local.db
 ```
 
 - Test Gemini connectivity:
 
 ```bash
-python scripts/test_llm_api.py
+python app/scripts/test_llm_api.py
 ```
 
 ## Data locations
 
-- SQLite DB: `output/local.db`
-- Uploaded/remote cache images: `output/uploads`
+- SQLite DB: `app/output/local.db`
+- Uploaded/remote cache images: `app/output/uploads`

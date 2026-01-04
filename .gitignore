@@ -21,6 +21,7 @@ venv_artist/
 
 # Ignore local artifacts/logs
 output/
+app/output/
 backups/
 pipeline.log
 

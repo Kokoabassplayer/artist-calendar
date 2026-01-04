@@ -20,7 +20,7 @@
     music label, insert date, artist name, Facebook link, artist image.
 - Images are highly variable (dense text, neon/glow, multi-column, mixed
   Thai/English, small fonts), so extraction must be layout-aware with QA.
-- Existing `database/schema_local.sql` covers the local ingest flow (artists,
+- Existing `app/database/schema_local.sql` covers the local ingest flow (artists,
   posters, events) but production will need extensions.
 
 ## Future production (what we will build)
