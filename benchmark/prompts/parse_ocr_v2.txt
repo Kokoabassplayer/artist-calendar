@@ -39,11 +39,6 @@ Rules:
 - Keep text as written; do not translate or invent details.
 - Do not guess venues or cities not present in the OCR text.
 
-Event construction (date-first):
-- Create an event only when a date is explicitly present in the OCR text.
-- Anchor each event to its date line. Only attach venue/city/province/time that appear on the same line as the date or the immediate adjacent line.
-- Do not carry locations across multiple dates unless the text explicitly labels a shared location block.
-
 Location extraction:
 - venue is the place name (bar/cafe/hall/stage). If the line has multiple parts, pick the venue name, not the city.
 - city is the city or district name if explicitly shown.

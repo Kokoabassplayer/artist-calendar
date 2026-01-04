@@ -1413,6 +1413,21 @@ def _needs_refine(pred: Any) -> bool:
     return False
 
 
+def _needs_core_field_repair(pred: Any) -> bool:
+    if not isinstance(pred, dict):
+        return True
+    events = pred.get("events") or []
+    if not isinstance(events, list):
+        return True
+    for event in events:
+        if not isinstance(event, dict):
+            return True
+        for field in ("date", "venue", "city", "province"):
+            if _is_blank(event.get(field)):
+                return True
+    return False
+
+
 def _normalize_locations(pred: Any) -> bool:
     if not isinstance(pred, dict):
         return False
@@ -1948,7 +1963,8 @@ def command_refine(args: argparse.Namespace) -> None:
         if args.retry_errors and not error_path.exists():
             return
         pred = _load_json(json_path)
-        if not args.force and not _needs_refine(pred):
+        needs_refine = _needs_core_field_repair(pred) if args.missing_core_only else _needs_refine(pred)
+        if not args.force and not needs_refine:
             if error_path.exists():
                 error_path.unlink()
             return
@@ -3492,6 +3508,11 @@ def build_parser() -> argparse.ArgumentParser:
     refine.add_argument("--tokens-per-request", type=int, help="Estimated tokens per refine request.")
     refine.add_argument("--sleep", type=float, default=0.0, help="Delay between requests.")
     refine.add_argument("--force", action="store_true", help="Force refinement even if not needed.")
+    refine.add_argument(
+        "--missing-core-only",
+        action="store_true",
+        help="Only refine posters missing date/venue/city/province fields.",
+    )
     refine.add_argument(
         "--retry-errors",
         action="store_true",

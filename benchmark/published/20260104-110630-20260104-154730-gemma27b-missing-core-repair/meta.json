@@ -1,0 +1,64 @@
+{
+  "generated_at": "2026-01-04T11:05:36+00:00",
+  "posters_manifest_ok": 58,
+  "ground_truth_available": 58,
+  "missing_ground_truth": 0,
+  "temperature": 0.2,
+  "seed_values": [
+    23
+  ],
+  "bootstrap": {
+    "samples": 1000,
+    "seed": 23,
+    "alpha": 0.05
+  },
+  "weights": {
+    "top_level": {
+      "artist_name": 0.35,
+      "instagram_handle": 0.15,
+      "tour_name": 0.2,
+      "contact_info": 0.1,
+      "source_month": 0.2
+    },
+    "event": {
+      "date": 0.3,
+      "time": 0.05,
+      "venue": 0.2,
+      "city": 0.15,
+      "province": 0.1,
+      "country": 0.05,
+      "event_name": 0.05,
+      "ticket_info": 0.05,
+      "status": 0.05
+    },
+    "core_event": {
+      "date": 0.375,
+      "venue": 0.25,
+      "city": 0.1875,
+      "province": 0.125,
+      "country": 0.0625
+    },
+    "quality": {
+      "structured": 0.4,
+      "event_match": 0.35,
+      "top_level": 0.15,
+      "event_count": 0.1
+    },
+    "missing_field_penalty": 10.0
+  },
+  "prompt_hashes": {
+    "benchmark/prompts/fill_locations.txt": "1bb7e46f497d55caafc4749ae18a3c2bdb0ad9d663713ec2d8dffe552bbef9ef",
+    "benchmark/prompts/ground_truth.txt": "5dbddf4622d452204da395ee1f5f60edc93b7e0fc55f22cb5df8951386910184",
+    "benchmark/prompts/interpret.txt": "cb69e83c5816e62e2e99ac4dfd24845e370f114aea7833d321fe5c9efb260a76",
+    "benchmark/prompts/judge.txt": "fe310d4d13ade006a81244135c3328b5c7b051a5598f3857d7042ba9102390df",
+    "benchmark/prompts/judge_compact.txt": "60d5d6ba913048ebdccd4e73afdf7eb7d10628cbde2d4bf8dc52710852db8863",
+    "benchmark/prompts/ocr.txt": "436067200b8e1802fd96a89eb0951fcd42410eb8aaaf0dca976429d48b6aba23",
+    "benchmark/prompts/parse_ocr.txt": "6a8d1b1f80c97a4ce6b5331d9309b2148c09184f99670bc8584a481a3ca39324",
+    "benchmark/prompts/parse_ocr_v2.txt": "1577ec4a9956b4cb2657a43410ab8b3824dbd7c2ace01a69b0e9f99250408b6e",
+    "benchmark/prompts/predict.txt": "d01e5ce0022d1b0f993f11d290c8e8c73d2cc167d5f1035d6e5c4e6eea2ab391",
+    "benchmark/prompts/predict_v2.txt": "3f44d00d9d2241cccd22e44593fbd6cc760356daf7376240917ed0a52f6d9615",
+    "benchmark/prompts/refine_missing_fields.txt": "b664011a5fbe3d451ad835b770bf82f2c87b93c067cb365123b15a26d8d14563",
+    "benchmark/prompts/refine_v1.txt": "3d64cb85acd7aefbc5354e6f542e469d462b42f02cedaf96aee127955e16af5f",
+    "benchmark/prompts/repair_json.txt": "0a570e716aece4fee3d1080dee3582edf868146a99fb8b720918e912bac8a07e"
+  }
+}

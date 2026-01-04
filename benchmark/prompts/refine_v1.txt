@@ -37,11 +37,6 @@ Rules:
 - status must be active, cancelled, or postponed.
 - Use Thailand if country is not specified.
 
-Event anchoring (date-first):
-- Each event must be anchored to a date visible in the image.
-- Only attach venue/city/province/time that appear on the same date line or the immediate adjacent line.
-- Do not copy locations across multiple dates unless a shared location is explicitly labeled.
-
 Location extraction:
 - venue is the place name (bar/cafe/hall/stage). If the line has multiple parts, pick the venue name, not the city.
 - city is the city or district name if explicitly shown.

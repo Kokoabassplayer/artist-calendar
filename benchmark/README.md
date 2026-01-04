@@ -71,8 +71,10 @@ Optional: OCR-first pipeline (Gemini):
   --model gemma-3-27b-it \
   --prompt benchmark/prompts/ocr.txt \
   --max-output max \
-  --parallel 1 \
-  --rpm 6
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
 
 ./venv_artist/bin/python benchmark/benchmark.py parse-ocr \
   --manifest benchmark/manifest.json \
@@ -83,8 +85,10 @@ Optional: OCR-first pipeline (Gemini):
   --repair-json \
   --repair-prompt benchmark/prompts/repair_json.txt \
   --max-output max \
-  --parallel 1 \
-  --rpm 6
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
 ```
 
 Optional: fill missing locations from OCR text:
@@ -97,8 +101,10 @@ Optional: fill missing locations from OCR text:
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --prompt benchmark/prompts/fill_locations.txt \
   --max-output max \
-  --parallel 1 \
-  --rpm 6
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
 ```
 
 Rerun only failed location fills:
@@ -111,6 +117,8 @@ Rerun only failed location fills:
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --max-output max \
   --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000 \
   --retry-errors
 ```
 
@@ -149,8 +157,10 @@ Optional: run Gemini in parallel with rate limits:
   --out benchmark/runs/$RUN_ID/predictions \
   --models gemini:gemma-3-27b-it \
   --max-output max \
-  --parallel 1 \
-  --rpm 6
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
 ```
 
 Optional: repair strict-schema JSON after predictions:
@@ -161,8 +171,10 @@ Optional: repair strict-schema JSON after predictions:
   --model gemma-3-27b-it \
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --max-output max \
-  --parallel 1 \
-  --rpm 6
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
 ```
 
 Optional: refine predictions with image + JSON (fills missing fields):
@@ -174,8 +186,10 @@ Optional: refine predictions with image + JSON (fills missing fields):
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --prompt benchmark/prompts/refine_v1.txt \
   --max-output max \
-  --parallel 1 \
-  --rpm 6
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
 ```
 
 Rerun only failed refine calls:
@@ -187,7 +201,25 @@ Rerun only failed refine calls:
   --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
   --max-output max \
   --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000 \
   --retry-errors
+
+Optional: targeted repair for missing core fields (date/venue/city/province):
+```bash
+./venv_artist/bin/python benchmark/benchmark.py refine \
+  --manifest benchmark/manifest.json \
+  --predictions benchmark/runs/$RUN_ID/predictions \
+  --model gemma-3-27b-it \
+  --model-dir benchmark/runs/$RUN_ID/predictions/gemini-gemma-3-27b-it \
+  --prompt benchmark/prompts/refine_missing_fields.txt \
+  --missing-core-only \
+  --max-output max \
+  --parallel 2 \
+  --rpm 6 \
+  --tpm 15000 \
+  --tokens-per-request 5000
+```
 ```
 
 Optional: normalize province/city from existing fields:
