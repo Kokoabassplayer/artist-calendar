@@ -32,6 +32,13 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
 - Offer a fast correction loop (edit inline, re-run on demand).
 - Degrade gracefully when AI quotas are hit (manual entry with smart defaults).
 
+## AI UX (Concrete Behaviors)
+- Show confidence per event and highlight missing fields only when needed.
+- Always show the poster alongside the editor to reconcile details quickly.
+- One-tap retry for a single event if extraction looks wrong.
+- Auto-normalize times, dates, and city/province formatting before review.
+- Keep a transparent audit trail: source URL, extraction time, model used.
+
 ## Key Screens
 - Home feed (upcoming shows + followed artists)
 - Discover (search + filters, including table view for power users)
