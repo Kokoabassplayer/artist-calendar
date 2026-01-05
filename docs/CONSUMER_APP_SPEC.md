@@ -26,6 +26,15 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
 - Continuity. The poster, data, and actions stay in one place.
 - Craft. Micro-details (spacing, weight, motion) are the product.
 
+## Visual Design Checklist (Liquid Glass)
+- Layout: 8/12/16 spacing system, generous vertical rhythm, no cramped stacks.
+- Typography: display serif for headings, clean grotesk for body; avoid text clutter.
+- Glass surfaces: 8-16px blur, 6-12% opacity fill, subtle 1px highlight.
+- Depth: 2-3 layers max; use shadow sparingly with soft edges.
+- Color: warm neutral base, one cool accent; avoid neon.
+- Motion: 150-250ms ease, gentle spring on sheet reveal, never bounce.
+- Focus: one primary action per screen; secondary actions are soft buttons.
+- Imagery: poster always visible near the editor; tap-to-zoom standard.
 ## User-Facing Flows
 1. Discover upcoming shows (by location, date, or artist).
 2. Follow favorite artists and get a personalized feed.
