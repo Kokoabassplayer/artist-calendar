@@ -19,6 +19,13 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
 - Review feels like a focused editor: one primary action, clear next step.
 - AI-first: extraction, normalization, and suggestions are the default experience.
 
+## Design Philosophy (Jony-Ive Style)
+- Clarity over cleverness. Every interaction should feel inevitable.
+- Reduce to the essential. Remove any UI that doesn't earn its place.
+- Tactile calm. Depth and glass are cues for focus, not decoration.
+- Continuity. The poster, data, and actions stay in one place.
+- Craft. Micro-details (spacing, weight, motion) are the product.
+
 ## User-Facing Flows
 1. Discover upcoming shows (by location, date, or artist).
 2. Follow favorite artists and get a personalized feed.
