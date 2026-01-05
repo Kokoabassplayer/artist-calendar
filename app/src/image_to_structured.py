@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, List, TypedDict
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from config import Config
 
@@ -37,6 +37,45 @@ class TourData(TypedDict):
 _CLIENT: Optional[genai.Client] = None
 MODEL_NAME = Config.GEMINI_MODEL
 REPAIR_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "refine_missing_fields.txt"
+SYSTEM_INSTRUCTION = (
+    "Extract structured tour data from the image. "
+    "Return JSON only and follow the schema exactly. "
+    "Keep text as close to the original as possible. "
+    "You may fix obvious OCR typos or missing spaces, but do not translate, "
+    "expand abbreviations, or invent new info. "
+    "Always use YYYY-MM for source_month and YYYY-MM-DD for event dates. "
+    "If only day is shown, infer month/year from the poster context. "
+    "Set event confidence and poster_confidence between 0 and 1. "
+    "Use higher values for clearer text and complete fields, lower values for "
+    "uncertain or incomplete entries, and vary them across events. "
+    "Do not include any *_raw, raw_text, date_text, or time_text fields."
+)
+SCHEMA_HINT = (
+    "Schema:\n"
+    "{\n"
+    '  "artist_name": "string",\n'
+    '  "instagram_handle": "string|null",\n'
+    '  "tour_name": "string|null",\n'
+    '  "contact_info": "string|null",\n'
+    '  "source_month": "YYYY-MM",\n'
+    '  "poster_confidence": "number 0-1 or null",\n'
+    '  "events": [\n'
+    "    {\n"
+    '      "date": "YYYY-MM-DD",\n'
+    '      "event_name": "string|null",\n'
+    '      "venue": "string|null",\n'
+    '      "city": "string|null",\n'
+    '      "province": "string|null",\n'
+    '      "country": "string",\n'
+    '      "time": "string|null",\n'
+    '      "ticket_info": "string|null",\n'
+    '      "status": "string",\n'
+    '      "confidence": "number 0-1 or null"\n'
+    "    }\n"
+    "  ]\n"
+    "}\n"
+    "Return only JSON with these exact keys."
+)
 
 
 def _get_client() -> genai.Client:
@@ -417,6 +456,123 @@ def _normalize_tour_data(data: dict) -> dict:
     return data
 
 
+def _is_instruction_error(exc: Exception) -> bool:
+    return "Developer instruction is not enabled" in str(exc)
+
+
+def _is_json_mode_error(exc: Exception) -> bool:
+    return "JSON mode is not enabled" in str(exc)
+
+
+def _build_config(system_instruction: str | None, structured: bool) -> types.GenerateContentConfig:
+    config = types.GenerateContentConfig(
+        temperature=0.1,
+        max_output_tokens=8192,
+    )
+    if structured:
+        config.response_mime_type = "application/json"
+        config.response_schema = TourData
+    if system_instruction:
+        config.system_instruction = system_instruction
+    return config
+
+
+def _generate_content(
+    client: genai.Client,
+    contents: list,
+    system_instruction: str,
+    *,
+    structured: bool,
+    inline_instruction: bool,
+) -> object:
+    if inline_instruction:
+        contents = [system_instruction, *contents]
+        system_instruction = ""
+    config = _build_config(system_instruction or None, structured=structured)
+    return client.models.generate_content(
+        model=MODEL_NAME,
+        contents=contents,
+        config=config,
+    )
+
+
+def _generate_with_instruction(contents: list, system_instruction: str) -> object:
+    client = _get_client()
+    fallback_instruction = f"{system_instruction}\n\n{SCHEMA_HINT}"
+    try:
+        return _generate_content(
+            client,
+            contents,
+            system_instruction,
+            structured=True,
+            inline_instruction=False,
+        )
+    except Exception as exc:
+        if _is_instruction_error(exc):
+            try:
+                return _generate_content(
+                    client,
+                    contents,
+                    fallback_instruction,
+                    structured=True,
+                    inline_instruction=True,
+                )
+            except Exception as inner_exc:
+                if _is_json_mode_error(inner_exc):
+                    return _generate_content(
+                        client,
+                        contents,
+                        fallback_instruction,
+                        structured=False,
+                        inline_instruction=True,
+                    )
+                raise
+        if _is_json_mode_error(exc):
+            try:
+                return _generate_content(
+                    client,
+                    contents,
+                    fallback_instruction,
+                    structured=False,
+                    inline_instruction=False,
+                )
+            except Exception as inner_exc:
+                if _is_instruction_error(inner_exc):
+                    return _generate_content(
+                        client,
+                        contents,
+                        fallback_instruction,
+                        structured=False,
+                        inline_instruction=True,
+                    )
+                raise
+        raise
+
+
+def _strip_code_fences(text: str) -> str:
+    if "```" not in text:
+        return text
+    cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE)
+    return cleaned.replace("```", "").strip()
+
+
+def _parse_json_response(text: str) -> object:
+    if not text:
+        return {}
+    cleaned = _strip_code_fences(text.strip())
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(cleaned[start : end + 1])
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+
 def _has_missing_core_fields(data: dict) -> bool:
     events = data.get("events") or []
     if not isinstance(events, list):
@@ -435,57 +591,26 @@ def _repair_missing_core_fields(image_path: str, data: dict) -> Optional[dict]:
     if not REPAIR_PROMPT_PATH.exists():
         return None
     prompt = REPAIR_PROMPT_PATH.read_text(encoding="utf-8")
-    config = types.GenerateContentConfig(
-        temperature=0.1,
-        maxOutputTokens=8192,
-        responseMimeType="application/json",
-        responseSchema=TourData,
-        systemInstruction=prompt,
-    )
     mime_type = _guess_mime_type(image_path) or "image/jpeg"
     uploaded_file = upload_to_gemini(image_path, mime_type=mime_type)
-    client = _get_client()
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=[uploaded_file, json.dumps(data, ensure_ascii=False)],
-        config=config,
+    response = _generate_with_instruction(
+        [uploaded_file, json.dumps(data, ensure_ascii=False)],
+        prompt,
     )
-    repaired = json.loads(response.text or "{}")
+    repaired = _parse_json_response(response.text or "")
     if isinstance(repaired, dict):
         return repaired
     return None
 
 
 def image_to_structured(image_path: str) -> TourData:
-    config = types.GenerateContentConfig(
-        temperature=0.1,
-        maxOutputTokens=8192,
-        responseMimeType="application/json",
-        responseSchema=TourData,
-        systemInstruction=(
-            "Extract structured tour data from the image. "
-            "Return JSON only and follow the schema exactly. "
-            "Keep text as close to the original as possible. "
-            "You may fix obvious OCR typos or missing spaces, but do not translate, "
-            "expand abbreviations, or invent new info. "
-            "Always use YYYY-MM for source_month and YYYY-MM-DD for event dates. "
-            "If only day is shown, infer month/year from the poster context. "
-            "Set event confidence and poster_confidence between 0 and 1. "
-            "Use higher values for clearer text and complete fields, lower values for "
-            "uncertain or incomplete entries, and vary them across events. "
-            "Do not include any *_raw, raw_text, date_text, or time_text fields."
-        ),
-    )
-
     mime_type = _guess_mime_type(image_path) or "image/jpeg"
     uploaded_file = upload_to_gemini(image_path, mime_type=mime_type)
-    client = _get_client()
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=[uploaded_file, "extract"],
-        config=config,
+    response = _generate_with_instruction(
+        [uploaded_file, "extract"],
+        SYSTEM_INSTRUCTION,
     )
-    data = json.loads(response.text or "{}")
+    data = _parse_json_response(response.text or "")
     if isinstance(data, dict):
         normalized = _normalize_tour_data(data)
         if Config.REPAIR_MISSING_CORE and _has_missing_core_fields(normalized):
