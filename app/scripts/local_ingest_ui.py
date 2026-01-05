@@ -2471,6 +2471,12 @@ def update_event(event_id: str):
                 return redirect(f"/event/{next_id}?return=/review/{poster_id}")
             return redirect(return_url)
 
+        if poster_id and action == "approve":
+            next_id = _next_pending_event_id(poster_id, event_id)
+            if next_id:
+                if return_to_poster:
+                    return redirect(f"/poster/{poster_id}?event={next_id}")
+                return redirect(f"/review/{poster_id}?focus={next_id}")
         return redirect(return_url)
 
     event = _fetch_event(event_id)
