@@ -302,6 +302,14 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         display: grid;
         gap: 10px;
       }}
+      .poster-grid {{
+        display: grid;
+        gap: 20px;
+      }}
+      .poster-stack {{
+        display: grid;
+        gap: 20px;
+      }}
       .event-card {{
         display: grid;
         grid-template-columns: 72px 1fr;
@@ -310,6 +318,10 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         border-radius: 14px;
         border: 1px solid var(--border);
         background: white;
+      }}
+      .event-card.active {{
+        border-color: rgba(28, 124, 123, 0.45);
+        background: #f5fbfa;
       }}
       .poster-image {{
         width: 100%;
@@ -348,6 +360,12 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
       .event-card.has-missing {{
         border-color: rgba(226, 109, 92, 0.28);
         background: #fff9f6;
+      }}
+      .event-detail.empty {{
+        display: grid;
+        place-items: center;
+        text-align: center;
+        color: var(--muted);
       }}
       .missing-chips {{
         display: flex;
@@ -590,6 +608,16 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
           width: auto;
         }}
       }}
+      @media (min-width: 1100px) {{
+        .poster-grid {{
+          grid-template-columns: 1.2fr 0.8fr;
+          align-items: start;
+        }}
+        .event-detail {{
+          position: sticky;
+          top: 20px;
+        }}
+      }}
     </style>
   </head>
   <body>
@@ -662,6 +690,116 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
           if (target) {{
             target.classList.add('focus');
             target.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+          }}
+        }}
+
+        const eventDataScript = document.getElementById('event-data');
+        if (eventDataScript) {{
+          let eventData = {{}};
+          try {{
+            eventData = JSON.parse(eventDataScript.textContent || '{{}}');
+          }} catch (error) {{
+            eventData = {{}};
+          }}
+          const detail = document.getElementById('event-detail');
+          if (detail) {{
+            const form = detail.querySelector('form');
+            const titleEl = detail.querySelector('#event-title');
+            const confEl = detail.querySelector('#event-conf');
+            const missingEl = detail.querySelector('#event-missing');
+            const posterId = detail.getAttribute('data-poster-id') || '';
+            const requiredFields = detail.querySelectorAll('[data-required-field]');
+
+            const titleCase = (value) => value ? value[0].toUpperCase() + value.slice(1) : value;
+            const renderMissing = (fields) => {{
+              if (!fields || !fields.length) return '';
+              const chips = fields.map((field) => `<span class="chip warn">${{titleCase(field)}}</span>`).join('');
+              return `<div class="missing-summary"><span class="filter-label">Missing</span>${{chips}}</div>`;
+            }};
+            const confidenceClass = (value) => {{
+              if (value >= 0.8) return 'status-good';
+              if (value >= 0.6) return 'status-warn';
+              return 'status-bad';
+            }};
+            const renderConfidence = (value) => {{
+              if (value === null || value === undefined || Number.isNaN(value)) return '';
+              const label = `${{Math.round(value * 100)}}%`;
+              const klass = confidenceClass(value);
+              return `<span class="pill ${{klass}}">conf ${{label}}</span>`;
+            }};
+            const setActiveCard = (eventId) => {{
+              document.querySelectorAll('.event-card.active').forEach((card) => {{
+                card.classList.remove('active');
+              }});
+              const card = document.getElementById(`event-${{eventId}}`);
+              if (card) {{
+                card.classList.add('active');
+              }}
+            }};
+
+            const selectEvent = (eventId, options = {{}}) => {{
+              const data = eventData[eventId];
+              if (!data || !form) return;
+
+              detail.classList.remove('empty');
+              detail.dataset.selectedEvent = eventId;
+              if (titleEl) {{
+                titleEl.textContent = data.event_name || data.venue || 'Untitled event';
+              }}
+              if (confEl) {{
+                confEl.innerHTML = renderConfidence(data.confidence);
+              }}
+              if (missingEl) {{
+                missingEl.innerHTML = renderMissing(data.missing_fields);
+              }}
+              form.setAttribute('action', `/event/${{eventId}}`);
+              const returnInput = form.querySelector('input[name=\"return\"]');
+              if (returnInput && posterId) {{
+                returnInput.value = `/poster/${{posterId}}?event=${{eventId}}`;
+              }}
+              const fields = ['date', 'event_name', 'venue', 'city', 'province', 'time', 'ticket_info', 'status'];
+              fields.forEach((field) => {{
+                const input = form.querySelector(`[name=\"${{field}}\"]`);
+                if (!input) return;
+                if (field === 'status') {{
+                  input.value = data.status || 'active';
+                }} else {{
+                  input.value = data[field] || '';
+                }}
+              }});
+              requiredFields.forEach((wrapper) => {{
+                const key = wrapper.getAttribute('data-required-field');
+                if (!key) return;
+                const value = (data[key] || '').toString().trim();
+                const required = !value;
+                wrapper.classList.toggle('required', required);
+                const hint = wrapper.querySelector('[data-required-hint]');
+                if (hint) {{
+                  hint.style.display = required ? 'block' : 'none';
+                }}
+              }});
+              setActiveCard(eventId);
+              if (!options.skipUrl) {{
+                const url = new URL(window.location.href);
+                url.searchParams.set('event', eventId);
+                history.replaceState({{}}, '', url.toString());
+              }}
+            }};
+
+            document.querySelectorAll('[data-event-select]').forEach((button) => {{
+              button.addEventListener('click', (event) => {{
+                event.preventDefault();
+                const eventId = button.getAttribute('data-event-select');
+                if (eventId) {{
+                  selectEvent(eventId);
+                }}
+              }});
+            }});
+
+            const initialId = detail.getAttribute('data-selected-event') || Object.keys(eventData)[0];
+            if (initialId) {{
+              selectEvent(initialId, {{ skipUrl: true }});
+            }}
           }}
         }}
       }});
@@ -1565,6 +1703,104 @@ def _review_url(poster_id: str, show_all: bool, missing: str | None) -> str:
     return f"/review/{poster_id}{query}"
 
 
+def _required_class(value: str | None) -> str:
+    return " required" if not value else ""
+
+
+def _required_hint(value: str | None) -> str:
+    style = "" if not value else ' style="display:none;"'
+    return f'<div class="field-hint warn" data-required-hint{style}>Required for approval.</div>'
+
+
+def _event_editor(
+    event: object,
+    poster_id: str,
+    return_url: str,
+    heading_tag: str = "h2",
+    form_id: str | None = None,
+) -> str:
+    title = (
+        _row_value(event, "event_name")
+        or _row_value(event, "venue")
+        or "Untitled event"
+    )
+    conf_value = _row_value(event, "confidence")
+    conf_score = conf_value if isinstance(conf_value, (int, float)) else None
+    conf_pill = _confidence_pill(conf_score)
+    missing_fields = _missing_fields(event)
+    missing_summary = ""
+    if missing_fields:
+        chips = "".join(
+            f'<span class="chip warn">{_esc(field.title())}</span>'
+            for field in missing_fields
+        )
+        missing_summary = f'<div class="missing-summary"><span class="filter-label">Missing</span>{chips}</div>'
+
+    def _val(key: str) -> str:
+        value = _row_value(event, key)
+        return "" if value is None else str(value)
+
+    form_id_attr = f' id="{form_id}"' if form_id else ""
+    event_id = _row_value(event, "id") or ""
+
+    return f"""
+      <{heading_tag} id="event-title">{_esc(title)}</{heading_tag}>
+      <p>Update fields, then approve or reject.</p>
+      <div id="event-conf">{conf_pill}</div>
+      <div id="event-missing">{missing_summary}</div>
+      <form method="post"{form_id_attr} action="/event/{_esc(str(event_id))}">
+        <input type="hidden" name="poster_id" value="{_esc(poster_id)}">
+        <input type="hidden" name="return" value="{_esc(return_url)}">
+        <div class="field{_required_class(_val('date'))}" data-required-field="date">
+          <label>Date<span class="req">*</span></label>
+          <input name="date" value="{_esc(_val('date'))}">
+          {_required_hint(_val('date'))}
+        </div>
+        <div class="field">
+          <label>Event name</label>
+          <input name="event_name" value="{_esc(_val('event_name'))}">
+        </div>
+        <div class="field{_required_class(_val('venue'))}" data-required-field="venue">
+          <label>Venue<span class="req">*</span></label>
+          <input name="venue" value="{_esc(_val('venue'))}">
+          {_required_hint(_val('venue'))}
+        </div>
+        <div class="field{_required_class(_val('city'))}" data-required-field="city">
+          <label>City<span class="req">*</span></label>
+          <input name="city" value="{_esc(_val('city'))}">
+          {_required_hint(_val('city'))}
+        </div>
+        <div class="field{_required_class(_val('province'))}" data-required-field="province">
+          <label>Province<span class="req">*</span></label>
+          <input name="province" value="{_esc(_val('province'))}">
+          {_required_hint(_val('province'))}
+        </div>
+        <div class="field">
+          <label>Time</label>
+          <input name="time" value="{_esc(_val('time'))}" placeholder="19:00">
+        </div>
+        <div class="field">
+          <label>Ticket info</label>
+          <input name="ticket_info" value="{_esc(_val('ticket_info'))}">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select name="status">
+            <option value="active" {"selected" if _val('status') == "active" else ""}>active</option>
+            <option value="cancelled" {"selected" if _val('status') == "cancelled" else ""}>cancelled</option>
+            <option value="postponed" {"selected" if _val('status') == "postponed" else ""}>postponed</option>
+          </select>
+        </div>
+        <div class="edit-actions">
+          <button class="button" name="action" value="approve">Approve</button>
+          <button class="button ghost" name="action" value="approve_next">Approve &amp; next</button>
+          <button class="button ghost" name="action" value="save_pending">Keep pending</button>
+          <button class="button secondary" name="action" value="reject">Reject</button>
+        </div>
+      </form>
+    """
+
+
 def _poster_status(event_count: int, pending_count: int, rejected_count: int) -> tuple[str, str]:
     if event_count <= 0:
         return ("no events", "status-warn")
@@ -1763,7 +1999,12 @@ def poster_view(poster_id: str) -> str:
             'target="_blank" rel="noopener">Source link</a>'
         )
     event_cards = []
+    event_payload: dict[str, dict[str, object]] = {}
+    selected_event_id = request.args.get("event")
+    first_event_id: str | None = None
     for row in events:
+        if first_event_id is None:
+            first_event_id = row["id"]
         title = row["event_name"] or row["venue"] or "Untitled event"
         location = _format_location(row["venue"], row["city"], row["province"])
         missing_fields = _missing_fields(row)
@@ -1778,10 +2019,26 @@ def poster_view(poster_id: str) -> str:
         status = row["review_status"] or "pending"
         event_status_class = status if status in {"approved", "rejected"} else "pending"
         conf_badge = _confidence_badge(row["confidence"])
+        active_class = " active" if row["id"] == selected_event_id else ""
+
+        event_payload[row["id"]] = {
+            "id": row["id"],
+            "date": row["date"] or "",
+            "event_name": row["event_name"] or "",
+            "venue": row["venue"] or "",
+            "city": row["city"] or "",
+            "province": row["province"] or "",
+            "time": row["time"] or "",
+            "ticket_info": row["ticket_info"] or "",
+            "status": row["status"] or "active",
+            "review_status": row["review_status"] or "pending",
+            "confidence": row["confidence"],
+            "missing_fields": missing_fields,
+        }
 
         event_cards.append(
             f"""
-            <div class="event-card{missing_class}">
+            <div class="event-card{missing_class}{active_class}" id="event-{row['id']}" data-event-id="{row['id']}">
               <div class="event-date">{_esc(_format_event_date(row['date']))}</div>
               <div>
                 <div class="event-title">{_esc(title)}
@@ -1791,18 +2048,56 @@ def poster_view(poster_id: str) -> str:
                 <div class="event-meta">{_esc(location or 'Location not set')}</div>
                 {missing_chips}
                 <div class="event-actions">
-                  <a class="button ghost small" href="/event/{row['id']}?return=/review/{poster_id}">Review</a>
+                  <a class="button ghost small" href="/poster/{poster_id}?event={row['id']}" data-event-select="{row['id']}">Review</a>
                 </div>
               </div>
             </div>
             """
         )
 
+    if not selected_event_id or selected_event_id not in event_payload:
+        selected_event_id = first_event_id
+    selected_event = event_payload.get(selected_event_id) if selected_event_id else None
+    return_url = f"/poster/{poster_id}"
+    if selected_event_id:
+        return_url = f"{return_url}?event={selected_event_id}"
+
     image_src = _image_src(poster["image_url"])
     image_html = ""
     if image_src:
         image_html = (
             f"<img src=\"{image_src}\" alt=\"poster\" class=\"poster-image\">"
+        )
+
+    if selected_event:
+        detail_body = _event_editor(
+            selected_event,
+            poster_id=poster_id,
+            return_url=return_url,
+            heading_tag="h2",
+            form_id="event-form",
+        )
+        detail_card = (
+            f'<div class="card event-detail" id="event-detail" '
+            f'data-poster-id="{_esc(poster_id)}" data-selected-event="{_esc(selected_event_id or "")}">'
+            f"{detail_body}</div>"
+        )
+    else:
+        detail_card = (
+            f'<div class="card event-detail empty" id="event-detail" '
+            f'data-poster-id="{_esc(poster_id)}" data-selected-event="">'
+            "<div>"
+            "<h3>No event selected</h3>"
+            "<p>Select an event on the left to review details.</p>"
+            "</div>"
+            "</div>"
+        )
+    event_payload_script = ""
+    if event_payload:
+        event_payload_script = (
+            f'<script type="application/json" id="event-data">'
+            f"{json.dumps(event_payload, ensure_ascii=False)}"
+            "</script>"
         )
 
     return _render_page(
@@ -1820,30 +2115,34 @@ def poster_view(poster_id: str) -> str:
             <a class="button ghost" href="/db">Back to library</a>
           </div>
         </header>
-        <div class="hero">
-          <div class="card">
-            <h1>{_esc(poster['artist_name'])}</h1>
-            <p>{_esc(poster['tour_name'] or 'Untitled tour')}</p>
-            <div class="meta-row" style="margin-bottom: 12px;">
-              <span class="pill">{_esc(poster['source_month'])}</span>
-              <span class="pill accent">{len(events)} events</span>
-              <span class="pill {status_class}">{status_label}</span>
-              {poster_conf_pill}
+        <div class="poster-grid">
+          <div class="poster-stack">
+            <div class="card">
+              <h1>{_esc(poster['artist_name'])}</h1>
+              <p>{_esc(poster['tour_name'] or 'Untitled tour')}</p>
+              <div class="meta-row" style="margin-bottom: 12px;">
+                <span class="pill">{_esc(poster['source_month'])}</span>
+                <span class="pill accent">{len(events)} events</span>
+                <span class="pill {status_class}">{status_label}</span>
+                {poster_conf_pill}
+              </div>
+              {source_link}
+              <p style="font-size: 13px; color: var(--muted);">Poster image</p>
+              {image_html}
             </div>
-            {source_link}
-            <p style="font-size: 13px; color: var(--muted);">Poster image</p>
-            {image_html}
+            <div class="card">
+              <div class="section-title">
+                <h2>Events</h2>
+                <span class="pill">pending {pending_count}/{len(events)}</span>
+              </div>
+              <div class="event-list">
+                {''.join(event_cards) if event_cards else '<p>No events found.</p>'}
+              </div>
+            </div>
           </div>
-          <div class="card">
-            <div class="section-title">
-              <h2>Events</h2>
-              <span class="pill">pending {pending_count}/{len(events)}</span>
-            </div>
-            <div class="event-list">
-              {''.join(event_cards) if event_cards else '<p>No events found.</p>'}
-            </div>
-          </div>
+          {detail_card}
         </div>
+        {event_payload_script}
         """
     )
 
@@ -1854,6 +2153,7 @@ def update_event(event_id: str):
         action = request.form.get("action") or "save_pending"
         poster_id = request.form.get("poster_id")
         return_url = request.form.get("return") or (f"/review/{poster_id}" if poster_id else "/db")
+        return_to_poster = bool(poster_id) and return_url.startswith(f"/poster/{poster_id}")
         review_status = None
         if action in {"approve", "approve_next"}:
             review_status = "approved"
@@ -1879,12 +2179,16 @@ def update_event(event_id: str):
         if poster_id and action == "approve_next":
             next_id = _next_pending_event_id(poster_id, event_id)
             if next_id:
+                if return_to_poster:
+                    return redirect(f"/poster/{poster_id}?event={next_id}")
                 return redirect(f"/event/{next_id}?return=/review/{poster_id}")
             return redirect(return_url)
 
         if poster_id and action == "approve":
             next_id = _next_pending_event_id(poster_id, event_id)
             if next_id:
+                if return_to_poster:
+                    return redirect(f"/poster/{poster_id}?event={next_id}")
                 return redirect(f"/review/{poster_id}?focus={next_id}")
         return redirect(return_url)
 
@@ -1931,24 +2235,12 @@ def update_event(event_id: str):
         </div>
         """
     return_url = request.args.get("return") or f"/review/{poster_id}"
-    title = event["event_name"] or event["venue"] or "Untitled event"
-    conf_pill = _confidence_pill(event["confidence"])
-    missing_fields = _missing_fields(event)
-    missing_summary = ""
-    if missing_fields:
-        chips = "".join(
-            f'<span class="chip warn">{_esc(field.title())}</span>'
-            for field in missing_fields
-        )
-        missing_summary = f'<div class="missing-summary"><span class="filter-label">Missing</span>{chips}</div>'
-
-    def _required_class(value: str | None) -> str:
-        return " required" if not value else ""
-
-    def _required_hint(value: str | None) -> str:
-        if value:
-            return ""
-        return '<div class="field-hint warn">Required for approval.</div>'
+    editor_html = _event_editor(
+        event,
+        poster_id=poster_id,
+        return_url=return_url,
+        heading_tag="h1",
+    )
 
     return _render_page(
         f"""
@@ -1966,60 +2258,7 @@ def update_event(event_id: str):
           </div>
         </header>
         <div class="card">
-          <h1>{_esc(title)}</h1>
-          <p>Update fields, then approve or reject.</p>
-          {conf_pill}
-          {missing_summary}
-          <form method="post">
-            <input type="hidden" name="poster_id" value="{_esc(poster_id)}">
-            <input type="hidden" name="return" value="{_esc(return_url)}">
-            <div class="field{_required_class(event['date'])}">
-              <label>Date<span class="req">*</span></label>
-              <input name="date" value="{_esc(event['date'])}">
-              {_required_hint(event['date'])}
-            </div>
-            <div class="field">
-              <label>Event name</label>
-              <input name="event_name" value="{_esc(event['event_name'])}">
-            </div>
-            <div class="field{_required_class(event['venue'])}">
-              <label>Venue<span class="req">*</span></label>
-              <input name="venue" value="{_esc(event['venue'])}">
-              {_required_hint(event['venue'])}
-            </div>
-            <div class="field{_required_class(event['city'])}">
-              <label>City<span class="req">*</span></label>
-              <input name="city" value="{_esc(event['city'])}">
-              {_required_hint(event['city'])}
-            </div>
-            <div class="field{_required_class(event['province'])}">
-              <label>Province<span class="req">*</span></label>
-              <input name="province" value="{_esc(event['province'])}">
-              {_required_hint(event['province'])}
-            </div>
-            <div class="field">
-              <label>Time</label>
-              <input name="time" value="{_esc(event['time'])}" placeholder="19:00">
-            </div>
-            <div class="field">
-              <label>Ticket info</label>
-              <input name="ticket_info" value="{_esc(event['ticket_info'])}">
-            </div>
-            <div class="field">
-              <label>Status</label>
-              <select name="status">
-                <option value="active" {"selected" if event['status'] == "active" else ""}>active</option>
-                <option value="cancelled" {"selected" if event['status'] == "cancelled" else ""}>cancelled</option>
-                <option value="postponed" {"selected" if event['status'] == "postponed" else ""}>postponed</option>
-              </select>
-            </div>
-            <div class="edit-actions">
-              <button class="button" name="action" value="approve">Approve</button>
-              <button class="button ghost" name="action" value="approve_next">Approve &amp; next</button>
-              <button class="button ghost" name="action" value="save_pending">Keep pending</button>
-              <button class="button secondary" name="action" value="reject">Reject</button>
-            </div>
-          </form>
+          {editor_html}
         </div>
         {modal_html}
         """
