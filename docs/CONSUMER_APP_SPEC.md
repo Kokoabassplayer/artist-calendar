@@ -79,6 +79,39 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
   - Empty state: no posters yet -> paste URL.
   - Entry: internal tooling only.
   - Exit: back to library.
+
+## Screen States (Empty / Loading / Error / Success)
+- Home Feed
+  - Empty: "Follow artists to see shows" + "Paste a poster URL".
+  - Loading: skeleton list with shimmer.
+  - Error: "Couldn’t load events" + retry.
+  - Success: feed list + calendar/map actions.
+- Discover
+  - Empty: "No matches" + quick filters to reset.
+  - Loading: skeleton cards/table.
+  - Error: network or quota error with retry.
+  - Success: result list + filters.
+- Event Detail
+  - Empty: not applicable.
+  - Loading: poster blur + content shimmer.
+  - Error: "Event unavailable" + back.
+  - Success: poster + map + calendar + share.
+- Artist Page
+  - Empty: "No upcoming events" + follow toggle.
+  - Loading: header shimmer + list skeleton.
+  - Error: "Artist unavailable" + back.
+  - Success: upcoming events grouped by month.
+- Intake + Review
+  - Empty: URL input prompt.
+  - Loading: progress steps (download → extract → save).
+  - Error: show extraction error + manual edit fallback.
+  - Success: inline editor + poster.
+
+## Interaction States (Micro)
+- Buttons: default, pressed, disabled, loading.
+- Inputs: default, focus, error (warm tint), success (subtle).
+- Cards: hover (web), selected (soft highlight), disabled (muted).
+- Sheets/Modals: open/close with 200ms ease, backdrop dim.
 ## User-Facing Flows
 1. Discover upcoming shows (by location, date, or artist).
 2. Follow favorite artists and get a personalized feed.
