@@ -313,6 +313,21 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         display: grid;
         gap: 20px;
       }}
+      .poster-peek {{
+        display: none;
+        margin: 12px 0 16px;
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: #fff3e8;
+      }}
+      .poster-peek-image {{
+        width: 100%;
+        max-height: 180px;
+        object-fit: contain;
+        border-radius: 12px;
+        background: #f0e7dd;
+      }}
       .event-panel {{
         position: relative;
       }}
@@ -629,6 +644,10 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         }}
       }}
       @media (max-width: 900px) {{
+        .poster-peek {{
+          display: grid;
+          gap: 10px;
+        }}
         .event-panel {{
           position: fixed;
           inset: 0;
@@ -1822,6 +1841,7 @@ def _event_editor(
     return_url: str,
     heading_tag: str = "h2",
     form_id: str | None = None,
+    intro_html: str = "",
 ) -> str:
     title = (
         _row_value(event, "event_name")
@@ -1852,6 +1872,7 @@ def _event_editor(
       <p>Update fields, then approve or reject.</p>
       <div id="event-conf">{conf_pill}</div>
       <div id="event-missing">{missing_summary}</div>
+      {intro_html}
       <form method="post"{form_id_attr} action="/event/{_esc(str(event_id))}">
         <input type="hidden" name="poster_id" value="{_esc(poster_id)}">
         <input type="hidden" name="return" value="{_esc(return_url)}">
@@ -2174,6 +2195,28 @@ def poster_view(poster_id: str) -> str:
         )
 
     panel_open = "true" if request.args.get("event") else "false"
+    poster_peek_html = ""
+    poster_modal_html = ""
+    if image_src:
+        safe_image_src = _esc(image_src)
+        poster_peek_html = f"""
+          <div class="poster-peek">
+            <button class="button ghost small" type="button" data-modal-open="poster-modal">View poster</button>
+            <img src="{safe_image_src}" alt="poster preview" class="poster-peek-image">
+          </div>
+        """
+        poster_modal_html = f"""
+        <div class="modal" id="poster-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <strong>Poster</strong>
+              <button class="button ghost small" type="button" data-modal-close>Close</button>
+            </div>
+            <img src="{safe_image_src}" alt="poster" class="poster-image full">
+          </div>
+        </div>
+        """
+
     if selected_event:
         detail_body = _event_editor(
             selected_event,
@@ -2181,6 +2224,7 @@ def poster_view(poster_id: str) -> str:
             return_url=return_url,
             heading_tag="h2",
             form_id="event-form",
+            intro_html=poster_peek_html,
         )
         detail_card = (
             f'<div class="card event-detail" id="event-detail" '
@@ -2259,6 +2303,7 @@ def poster_view(poster_id: str) -> str:
           </div>
         </div>
         {event_payload_script}
+        {poster_modal_html}
         """
     )
 
