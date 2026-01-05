@@ -340,6 +340,10 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         border-radius: 12px;
         background: #f0e7dd;
       }}
+      .poster-image[data-modal-open],
+      .poster-peek-image[data-modal-open] {{
+        cursor: zoom-in;
+      }}
       .event-panel {{
         position: relative;
       }}
@@ -797,6 +801,15 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
           locationSelect.addEventListener('change', () => {{
             applyLocationRequirement(formEl, locationSelect.value);
           }});
+          formEl.querySelectorAll('[data-required-field]').forEach((wrapper) => {{
+            const key = wrapper.getAttribute('data-required-field');
+            if (!key) return;
+            const input = wrapper.querySelector(`[name=\"${{key}}\"]`);
+            if (!input) return;
+            input.addEventListener('input', () => {{
+              applyLocationRequirement(formEl, locationSelect.value);
+            }});
+          }});
         }});
 
         const params = new URLSearchParams(window.location.search);
@@ -988,6 +1001,16 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
               }});
               applyLocationRequirement(locationSelect.value);
             }}
+            requiredFields.forEach((wrapper) => {{
+              const key = wrapper.getAttribute('data-required-field');
+              if (!key) return;
+              const input = wrapper.querySelector(`[name=\"${{key}}\"]`);
+              if (!input) return;
+              input.addEventListener('input', () => {{
+                const locationValue = locationSelect ? locationSelect.value : 'public';
+                applyLocationRequirement(locationValue);
+              }});
+            }});
 
             const initialParam = params.get('event');
             const initialId = initialParam || detail.getAttribute('data-selected-event') || Object.keys(eventData)[0];
@@ -1357,7 +1380,7 @@ def review_view(poster_id: str) -> str:
     image_html = ""
     if image_src:
         image_html = (
-            f"<img src=\"{image_src}\" alt=\"poster\" class=\"poster-image\">"
+            f"<img src=\"{image_src}\" alt=\"poster\" class=\"poster-image\" data-modal-open=\"poster-modal\">"
         )
     modal_html = ""
     if image_src:
@@ -2017,7 +2040,6 @@ def _event_editor(
         </div>
         <div class="edit-actions">
           <button class="button" name="action" value="approve">Approve</button>
-          <button class="button ghost" name="action" value="approve_next">Approve &amp; next</button>
           <button class="button ghost" name="action" value="save_pending">Keep pending</button>
           <button class="button secondary" name="action" value="reject">Reject</button>
         </div>
@@ -2306,7 +2328,7 @@ def poster_view(poster_id: str) -> str:
         poster_peek_html = f"""
           <div class="poster-peek">
             <button class="button ghost small" type="button" data-modal-open="poster-modal">View poster</button>
-            <img src="{safe_image_src}" alt="poster preview" class="poster-peek-image">
+      <img src="{safe_image_src}" alt="poster preview" class="poster-peek-image" data-modal-open="poster-modal">
           </div>
         """
         poster_modal_html = f"""
@@ -2449,12 +2471,6 @@ def update_event(event_id: str):
                 return redirect(f"/event/{next_id}?return=/review/{poster_id}")
             return redirect(return_url)
 
-        if poster_id and action == "approve":
-            next_id = _next_pending_event_id(poster_id, event_id)
-            if next_id:
-                if return_to_poster:
-                    return redirect(f"/poster/{poster_id}?event={next_id}")
-                return redirect(f"/review/{poster_id}?focus={next_id}")
         return redirect(return_url)
 
     event = _fetch_event(event_id)
