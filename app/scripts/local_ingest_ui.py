@@ -63,6 +63,9 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
           linear-gradient(180deg, var(--bg) 0%, #f8f3ed 60%, #f4ede4 100%);
         min-height: 100vh;
       }}
+      body.panel-open {{
+        overflow: hidden;
+      }}
       .container {{
         max-width: 980px;
         margin: 0 auto;
@@ -310,6 +313,22 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         display: grid;
         gap: 20px;
       }}
+      .event-panel {{
+        position: relative;
+      }}
+      .event-panel-backdrop {{
+        display: none;
+      }}
+      .event-panel-header {{
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }}
+      .event-panel-title {{
+        font-weight: 600;
+      }}
       .event-card {{
         display: grid;
         grid-template-columns: 72px 1fr;
@@ -318,6 +337,7 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
         border-radius: 14px;
         border: 1px solid var(--border);
         background: white;
+        cursor: pointer;
       }}
       .event-card.active {{
         border-color: rgba(28, 124, 123, 0.45);
@@ -608,6 +628,41 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
           width: auto;
         }}
       }}
+      @media (max-width: 900px) {{
+        .event-panel {{
+          position: fixed;
+          inset: 0;
+          z-index: 60;
+          display: none;
+        }}
+        .event-panel[data-open="true"] {{
+          display: block;
+        }}
+        .event-panel-backdrop {{
+          display: block;
+          position: absolute;
+          inset: 0;
+          background: rgba(15, 23, 28, 0.55);
+        }}
+        .event-detail {{
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          max-height: 85vh;
+          overflow-y: auto;
+          border-radius: 20px 20px 0 0;
+          box-shadow: 0 -14px 40px rgba(17, 24, 39, 0.2);
+          transform: translateY(100%);
+          transition: transform 0.25s ease;
+        }}
+        .event-panel[data-open="true"] .event-detail {{
+          transform: translateY(0);
+        }}
+        .event-panel-header {{
+          display: flex;
+        }}
+      }}
       @media (min-width: 1100px) {{
         .poster-grid {{
           grid-template-columns: 1.2fr 0.8fr;
@@ -708,7 +763,31 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
             const confEl = detail.querySelector('#event-conf');
             const missingEl = detail.querySelector('#event-missing');
             const posterId = detail.getAttribute('data-poster-id') || '';
+            const panel = document.getElementById('event-panel');
             const requiredFields = detail.querySelectorAll('[data-required-field]');
+            const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+            const setPanelOpen = (open) => {{
+              if (!panel) return;
+              panel.dataset.open = open ? 'true' : 'false';
+              document.body.classList.toggle('panel-open', open);
+            }};
+            const closePanel = () => {{
+              setPanelOpen(false);
+              const url = new URL(window.location.href);
+              url.searchParams.delete('event');
+              history.replaceState({{}}, '', url.toString());
+            }};
+
+            document.querySelectorAll('[data-event-close]').forEach((button) => {{
+              button.addEventListener('click', () => {{
+                closePanel();
+              }});
+            }});
+            window.addEventListener('resize', () => {{
+              if (!isMobile()) {{
+                setPanelOpen(false);
+              }}
+            }});
 
             const titleCase = (value) => value ? value[0].toUpperCase() + value.slice(1) : value;
             const renderMissing = (fields) => {{
@@ -740,6 +819,7 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
             const selectEvent = (eventId, options = {{}}) => {{
               const data = eventData[eventId];
               if (!data || !form) return;
+              const {{ skipUrl = false, open = true, scroll = false }} = options;
 
               detail.classList.remove('empty');
               detail.dataset.selectedEvent = eventId;
@@ -779,10 +859,19 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
                 }}
               }});
               setActiveCard(eventId);
-              if (!options.skipUrl) {{
+              if (scroll) {{
+                const card = document.getElementById(`event-${{eventId}}`);
+                if (card) {{
+                  card.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                }}
+              }}
+              if (!skipUrl) {{
                 const url = new URL(window.location.href);
                 url.searchParams.set('event', eventId);
                 history.replaceState({{}}, '', url.toString());
+              }}
+              if (open && isMobile()) {{
+                setPanelOpen(true);
               }}
             }};
 
@@ -796,9 +885,24 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
               }});
             }});
 
-            const initialId = detail.getAttribute('data-selected-event') || Object.keys(eventData)[0];
+            document.querySelectorAll('.event-card').forEach((card) => {{
+              card.addEventListener('click', (event) => {{
+                if (event.target.closest('a, button, input, select, textarea, label')) return;
+                const eventId = card.getAttribute('data-event-id');
+                if (eventId) {{
+                  selectEvent(eventId);
+                }}
+              }});
+            }});
+
+            const initialParam = params.get('event');
+            const initialId = initialParam || detail.getAttribute('data-selected-event') || Object.keys(eventData)[0];
             if (initialId) {{
-              selectEvent(initialId, {{ skipUrl: true }});
+              selectEvent(initialId, {{
+                skipUrl: true,
+                open: Boolean(initialParam),
+                scroll: Boolean(initialParam),
+              }});
             }}
           }}
         }}
@@ -2069,6 +2173,7 @@ def poster_view(poster_id: str) -> str:
             f"<img src=\"{image_src}\" alt=\"poster\" class=\"poster-image\">"
         )
 
+    panel_open = "true" if request.args.get("event") else "false"
     if selected_event:
         detail_body = _event_editor(
             selected_event,
@@ -2080,12 +2185,20 @@ def poster_view(poster_id: str) -> str:
         detail_card = (
             f'<div class="card event-detail" id="event-detail" '
             f'data-poster-id="{_esc(poster_id)}" data-selected-event="{_esc(selected_event_id or "")}">'
+            '<div class="event-panel-header">'
+            '<div class="event-panel-title">Event details</div>'
+            '<button class="button ghost small" type="button" data-event-close>Close</button>'
+            "</div>"
             f"{detail_body}</div>"
         )
     else:
         detail_card = (
             f'<div class="card event-detail empty" id="event-detail" '
             f'data-poster-id="{_esc(poster_id)}" data-selected-event="">'
+            '<div class="event-panel-header">'
+            '<div class="event-panel-title">Event details</div>'
+            '<button class="button ghost small" type="button" data-event-close>Close</button>'
+            "</div>"
             "<div>"
             "<h3>No event selected</h3>"
             "<p>Select an event on the left to review details.</p>"
@@ -2140,7 +2253,10 @@ def poster_view(poster_id: str) -> str:
               </div>
             </div>
           </div>
-          {detail_card}
+          <div class="event-panel" id="event-panel" data-open="{panel_open}">
+            <div class="event-panel-backdrop" data-event-close></div>
+            {detail_card}
+          </div>
         </div>
         {event_payload_script}
         """
