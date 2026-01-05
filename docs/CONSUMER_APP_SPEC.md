@@ -95,6 +95,19 @@ Comparable products for inspiration and gap analysis:
 - Ticketing platforms (Ticketmaster/Live Nation/SeatGeek)
 - Local ticketing (varies by region)
 
+## Differentiation
+- Poster-first ingestion: convert the primary real-world source into structured data.
+- Calendar-first planning: one tap to map + calendar, no manual typing.
+- Local focus: works for regions where poster images are the dominant format.
+- Lightweight and respectful: fast, simple, and avoids heavy ticketing friction.
+
+## Monetization (Post-MVP)
+- Affiliate ticket links (where available).
+- Premium features: calendar sync, smart reminders, follow limits, saved searches.
+- Organizer tools: upload posters + verify events, analytics dashboard.
+- Venue/artist pages: promoted placements with clear labels.
+- API access for partners (media, venues, agencies).
+
 ## Open Questions
 - Preferred magic-link email provider?
 - Which free LLM source should be primary fallback?
