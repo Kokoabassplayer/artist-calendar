@@ -50,20 +50,35 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
   - Top: location selector + search.
   - Body: upcoming events list (date, artist, venue, city).
   - Actions: "Add to calendar", "Map", "Share".
+  - Empty state: prompt to follow artists or paste first poster.
+  - Entry: app launch or after sign-in.
+  - Exit: tap event -> Event Detail.
 - Discover
   - Filters: date range, city/province, artist, status.
   - List modes: cards (default) + table (power user).
+  - Empty state: suggest popular artists or nearby cities.
+  - Entry: search or filter from Home.
+  - Exit: tap event -> Event Detail.
 - Event Detail
   - Poster preview + key info (date, time, venue, city).
   - Map button + calendar download + share.
   - Related events by same artist.
+  - Empty state: none (requires event).
+  - Entry: tap event from Home/Discover/Artist.
+  - Exit: back to list; or share.
 - Artist Page
   - Hero: artist name + follow button.
   - Upcoming events list, grouped by month.
+  - Empty state: show "No upcoming events" + follow anyway.
+  - Entry: tap artist name or search.
+  - Exit: back to list or event detail.
 - Intake + Review (Internal)
   - Paste poster URL, see extracted events.
   - Inline editor with poster always visible.
   - One primary action: approve (advances).
+  - Empty state: no posters yet -> paste URL.
+  - Entry: internal tooling only.
+  - Exit: back to library.
 ## User-Facing Flows
 1. Discover upcoming shows (by location, date, or artist).
 2. Follow favorite artists and get a personalized feed.
