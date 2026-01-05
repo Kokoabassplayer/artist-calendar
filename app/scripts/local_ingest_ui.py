@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import html
 import json
 import re
@@ -344,6 +345,74 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
       .event-meta.missing {{
         color: var(--accent-2);
       }}
+      .event-card.has-missing {{
+        border-color: rgba(226, 109, 92, 0.28);
+        background: #fff9f6;
+      }}
+      .missing-chips {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+      }}
+      .chip {{
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: #f1e9df;
+        color: var(--muted);
+      }}
+      .chip.warn {{
+        background: rgba(226, 109, 92, 0.14);
+        color: var(--accent-2);
+      }}
+      .filter-row {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-top: 10px;
+      }}
+      .filter-label {{
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }}
+      .pill.selected {{
+        background: var(--accent);
+        color: white;
+      }}
+      .pill.soft {{
+        background: #f1e9df;
+        color: var(--muted);
+      }}
+      .missing-summary {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 10px 0 2px;
+      }}
+      .req {{
+        color: var(--accent-2);
+        margin-left: 4px;
+        font-weight: 600;
+      }}
+      .field.required input,
+      .field.required select {{
+        border-color: rgba(226, 109, 92, 0.45);
+        background: #fff4f1;
+      }}
+      .field-hint {{
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+      }}
+      .field-hint.warn {{
+        color: var(--accent-2);
+      }}
       .edit-form {{
         margin-top: 10px;
       }}
@@ -667,7 +736,7 @@ def index() -> str:
     )
 
 
-def _fetch_posters(limit: int = 10):
+def _fetch_posters(limit: int = 50):
     if not DB_PATH.exists():
         return []
     conn = sqlite3.connect(str(DB_PATH))
@@ -675,7 +744,7 @@ def _fetch_posters(limit: int = 10):
     rows = conn.execute(
         """
         SELECT p.id, p.image_url, p.source_month, p.tour_name, p.created_at,
-               p.poster_confidence,
+               p.poster_confidence, p.source_url, p.source_post_id, p.image_hash,
                a.name AS artist_name,
                COUNT(e.id) AS event_count,
                SUM(CASE WHEN e.review_status = 'approved' THEN 1 ELSE 0 END) AS approved_count,
@@ -684,7 +753,8 @@ def _fetch_posters(limit: int = 10):
         FROM posters p
         JOIN artists a ON a.id = p.artist_id
         LEFT JOIN events e ON e.poster_id = p.id
-        GROUP BY p.id, p.image_url, p.source_month, p.tour_name, p.created_at, p.poster_confidence, a.name
+        GROUP BY p.id, p.image_url, p.source_month, p.tour_name, p.created_at,
+                 p.poster_confidence, p.source_url, p.source_post_id, p.image_hash, a.name
         ORDER BY p.created_at DESC
         LIMIT ?
         """,
@@ -847,28 +917,71 @@ def review_view(poster_id: str) -> str:
         )
 
     events = _fetch_events(poster_id)
-    pending_count = sum(1 for row in events if row["review_status"] == "pending")
+    pending_events = [row for row in events if row["review_status"] == "pending"]
+    pending_count = len(pending_events)
     approved_count = sum(1 for row in events if row["review_status"] == "approved")
     rejected_count = sum(1 for row in events if row["review_status"] == "rejected")
     status_label, status_class = _poster_status(len(events), pending_count, rejected_count)
-    warning = _poster_image_warning(poster["image_url"], poster["source_url"], poster["raw_json"])
-    poster_conf_pill = _confidence_pill(poster["poster_confidence"])
     poster_conf_pill = _confidence_pill(poster["poster_confidence"])
     show_all = request.args.get("show") == "all"
-    filtered = events if show_all else [row for row in events if row["review_status"] == "pending"]
+    missing_filter = request.args.get("missing")
+    allowed_missing = {"any", "venue", "city", "province", "complete"}
+    if missing_filter not in allowed_missing:
+        missing_filter = None
+    base_events = events if show_all else pending_events
+    missing_counts = {key: 0 for key in allowed_missing}
+    for row in base_events:
+        missing_fields = _missing_fields(row)
+        if missing_fields:
+            missing_counts["any"] += 1
+        else:
+            missing_counts["complete"] += 1
+        for field in missing_fields:
+            if field in missing_counts:
+                missing_counts[field] += 1
+
+    def _matches_missing(row: dict) -> bool:
+        missing_fields = _missing_fields(row)
+        if missing_filter == "any":
+            return bool(missing_fields)
+        if missing_filter == "complete":
+            return not missing_fields
+        if missing_filter in {"venue", "city", "province"}:
+            return missing_filter in missing_fields
+        return True
+
+    filtered = [row for row in base_events if _matches_missing(row)]
+    pending_missing_count = sum(1 for row in pending_events if _missing_fields(row))
+    confirm_message = "Approve all events?"
+    if pending_missing_count:
+        confirm_message = (
+            f"Approve all events? {pending_missing_count} pending events still missing "
+            "venue, city, or province."
+        )
+    confirm_message_js = json.dumps(confirm_message)
+    missing_total = len(base_events)
+    pending_url = _review_url(poster_id, False, missing_filter)
+    all_url = _review_url(poster_id, True, missing_filter)
+    missing_all_url = _review_url(poster_id, show_all, None)
+    missing_any_url = _review_url(poster_id, show_all, "any")
+    missing_venue_url = _review_url(poster_id, show_all, "venue")
+    missing_city_url = _review_url(poster_id, show_all, "city")
+    missing_province_url = _review_url(poster_id, show_all, "province")
+    missing_complete_url = _review_url(poster_id, show_all, "complete")
 
     event_cards = []
     for row in filtered:
         title = row["event_name"] or row["venue"] or "Untitled event"
         location = _format_location(row["venue"], row["city"], row["province"])
-        missing = []
-        if not row["venue"]:
-            missing.append("venue")
-        if not row["city"]:
-            missing.append("city")
-        if not row["province"]:
-            missing.append("province")
-        missing_text = f"Missing: {', '.join(missing)}" if missing else ""
+        missing_fields = _missing_fields(row)
+        missing_class = " has-missing" if missing_fields else ""
+        missing_chips = ""
+        if missing_fields:
+            chips = "".join(
+                f'<span class="chip warn">{_esc(field.title())}</span>'
+                for field in missing_fields
+            )
+            missing_chips = f'<div class="missing-chips">{chips}</div>'
         status = row["review_status"] or "pending"
         status_class = status if status in {"approved", "rejected"} else "pending"
         conf_badge = _confidence_badge(row["confidence"])
@@ -885,7 +998,7 @@ def review_view(poster_id: str) -> str:
 
         event_cards.append(
             f"""
-            <div class="event-card" id="event-{_esc(row['id'])}">
+            <div class="event-card{missing_class}" id="event-{_esc(row['id'])}">
               <div class="event-date">{_esc(_format_event_date(row['date']))}</div>
               <div>
                 <div class="event-title">{_esc(title)}
@@ -893,7 +1006,7 @@ def review_view(poster_id: str) -> str:
                   {conf_badge}
                 </div>
                 <div class="event-meta">{_esc(location or 'Location not set')}</div>
-                {f'<div class="event-meta missing">{missing_text}</div>' if missing_text else ''}
+                {missing_chips}
                 <div class="event-actions">
                   <a class="button ghost small" href="/event/{row['id']}?return=/review/{poster_id}">Review</a>
                   {quick_approve}
@@ -942,7 +1055,6 @@ def review_view(poster_id: str) -> str:
           <div class="card review-summary">
             <h1>Review events</h1>
             <p>Confirm details before approval.</p>
-            {f'<p class="hint warn">{_esc(warning)}</p>' if warning else ''}
             <div class="meta-row" style="margin-top: 12px;">
               <span class="pill">pending {pending_count}</span>
               <span class="pill accent">approved {approved_count}</span>
@@ -951,7 +1063,7 @@ def review_view(poster_id: str) -> str:
               {poster_conf_pill}
             </div>
             <div class="actions">
-              <form method="post" action="/poster/{poster_id}/approve-all" onsubmit="return confirm('Approve all events?')">
+              <form method="post" action="/poster/{poster_id}/approve-all" onsubmit="return confirm({confirm_message_js})">
                 <button class="button" type="submit">Approve all</button>
               </form>
               <a class="button ghost" href="/poster/{poster_id}">Poster details</a>
@@ -973,9 +1085,18 @@ def review_view(poster_id: str) -> str:
             <div class="section-title">
               <h2>Event list</h2>
               <div class="actions">
-                <a class="button ghost small" href="/review/{poster_id}">Pending</a>
-                <a class="button ghost small" href="/review/{poster_id}?show=all">All</a>
+                <a class="button ghost small" href="{pending_url}">Pending</a>
+                <a class="button ghost small" href="{all_url}">All</a>
               </div>
+            </div>
+            <div class="filter-row">
+              <span class="filter-label">Missing</span>
+              <a class="pill soft {'' if missing_filter else 'selected'}" href="{missing_all_url}">All {missing_total}</a>
+              <a class="pill { 'selected' if missing_filter == 'any' else '' }" href="{missing_any_url}">Any {missing_counts['any']}</a>
+              <a class="pill { 'selected' if missing_filter == 'venue' else '' }" href="{missing_venue_url}">Venue {missing_counts['venue']}</a>
+              <a class="pill { 'selected' if missing_filter == 'city' else '' }" href="{missing_city_url}">City {missing_counts['city']}</a>
+              <a class="pill { 'selected' if missing_filter == 'province' else '' }" href="{missing_province_url}">Province {missing_counts['province']}</a>
+              <a class="pill { 'selected' if missing_filter == 'complete' else '' }" href="{missing_complete_url}">Complete {missing_counts['complete']}</a>
             </div>
             <div class="event-list">
               {''.join(event_cards) if event_cards else '<p>No events to review.</p>'}
@@ -1064,31 +1185,6 @@ def _infer_source_type(url: str) -> str:
     if "facebook" in host or "fbcdn.net" in host:
         return "facebook"
     return "website"
-
-
-def _poster_image_warning(
-    image_url: str | None, source_url: str | None, raw_json: str | None
-) -> str | None:
-    if not source_url:
-        return None
-    if "instagram.com" not in source_url and "instagram" not in source_url:
-        return None
-    source_image_url = None
-    if raw_json:
-        try:
-            payload = json.loads(raw_json)
-            source_image_url = payload.get("source_image_url")
-        except Exception:
-            source_image_url = None
-    check_url = source_image_url or image_url
-    if not check_url or not isinstance(check_url, str):
-        return None
-    if "p1080x1080" in check_url or "s640x640" in check_url:
-        return (
-            "Instagram only provides a square crop for this post. "
-            "Upload the original poster or a direct image link to review the full layout."
-        )
-    return None
 
 
 def _should_store_local_image(source_url: str, resolved_url: str) -> bool:
@@ -1328,6 +1424,147 @@ def _format_location(venue: str | None, city: str | None, province: str | None) 
     return " - ".join(parts)
 
 
+def _row_value(row: object, key: str) -> object:
+    if isinstance(row, dict):
+        return row.get(key)
+    try:
+        return row[key]  # type: ignore[index]
+    except Exception:
+        return None
+
+
+def _extract_instagram_shortcode(url: str) -> str | None:
+    try:
+        parts = [part for part in urlparse(url).path.split("/") if part]
+    except Exception:
+        return None
+    for idx, part in enumerate(parts):
+        if part in {"p", "reel", "tv"} and idx + 1 < len(parts):
+            return parts[idx + 1]
+    return None
+
+
+def _hash_file(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(8192), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _find_existing_poster(
+    source_post_id: str | None,
+    source_url: str | None,
+    image_hash: str | None,
+):
+    if not DB_PATH.exists():
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    try:
+        if source_post_id:
+            row = conn.execute(
+                """
+                SELECT p.id, p.created_at, p.tour_name, p.source_month, a.name AS artist_name
+                FROM posters p
+                JOIN artists a ON a.id = p.artist_id
+                WHERE p.source_post_id = ?
+                ORDER BY p.created_at DESC
+                LIMIT 1
+                """,
+                (source_post_id,),
+            ).fetchone()
+            if row:
+                return row
+        if source_url:
+            row = conn.execute(
+                """
+                SELECT p.id, p.created_at, p.tour_name, p.source_month, a.name AS artist_name
+                FROM posters p
+                JOIN artists a ON a.id = p.artist_id
+                WHERE p.source_url = ?
+                ORDER BY p.created_at DESC
+                LIMIT 1
+                """,
+                (source_url,),
+            ).fetchone()
+            if row:
+                return row
+        if image_hash:
+            row = conn.execute(
+                """
+                SELECT p.id, p.created_at, p.tour_name, p.source_month, a.name AS artist_name
+                FROM posters p
+                JOIN artists a ON a.id = p.artist_id
+                WHERE p.image_hash = ?
+                ORDER BY p.created_at DESC
+                LIMIT 1
+                """,
+                (image_hash,),
+            ).fetchone()
+            if row:
+                return row
+    finally:
+        conn.close()
+    return None
+
+
+def _poster_dedupe_key(row: dict) -> str:
+    return (
+        row.get("source_post_id")
+        or row.get("source_url")
+        or row.get("image_hash")
+        or row["id"]
+    )
+
+
+def _dedupe_posters(rows: list[dict]) -> tuple[list[dict], int]:
+    buckets: dict[str, dict] = {}
+    for row in rows:
+        key = _poster_dedupe_key(row)
+        entry = buckets.get(key)
+        if not entry:
+            buckets[key] = {"row": row, "count": 1}
+            continue
+        entry["count"] += 1
+        if (row.get("created_at") or "") > (entry["row"].get("created_at") or ""):
+            entry["row"] = row
+
+    deduped = []
+    for entry in buckets.values():
+        item = dict(entry["row"])
+        item["version_count"] = entry["count"]
+        deduped.append(item)
+
+    deduped.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    hidden_count = max(len(rows) - len(deduped), 0)
+    return deduped, hidden_count
+
+
+def _missing_fields(row: object) -> list[str]:
+    missing = []
+    if not _row_value(row, "venue"):
+        missing.append("venue")
+    if not _row_value(row, "city"):
+        missing.append("city")
+    if not _row_value(row, "province"):
+        missing.append("province")
+    return missing
+
+
+def _review_url(poster_id: str, show_all: bool, missing: str | None) -> str:
+    params = []
+    if show_all:
+        params.append("show=all")
+    if missing:
+        params.append(f"missing={missing}")
+    query = f"?{'&'.join(params)}" if params else ""
+    return f"/review/{poster_id}{query}"
+
+
 def _poster_status(event_count: int, pending_count: int, rejected_count: int) -> tuple[str, str]:
     if event_count <= 0:
         return ("no events", "status-warn")
@@ -1385,8 +1622,9 @@ def _format_event_date(value: str) -> str:
 
 @app.get("/db")
 def db_view() -> str:
-    posters = _fetch_posters()
-    if not posters:
+    show_all = request.args.get("show") == "all"
+    posters_rows = _fetch_posters()
+    if not posters_rows:
         return _render_page(
             """
             <header class="topbar">
@@ -1409,6 +1647,13 @@ def db_view() -> str:
             """
         )
 
+    posters_dicts = [dict(row) for row in posters_rows]
+    hidden_count = 0
+    if show_all:
+        posters = posters_dicts
+    else:
+        posters, hidden_count = _dedupe_posters(posters_dicts)
+
     cards = []
     for row in posters:
         thumb = ""
@@ -1422,6 +1667,12 @@ def db_view() -> str:
         pending_count = row["pending_count"] or 0
         rejected_count = row["rejected_count"] or 0
         status_label, status_class = _poster_status(event_count, pending_count, rejected_count)
+        version_count = row.get("version_count", 1)
+        version_pill = (
+            f'<span class="pill soft">{version_count} versions</span>'
+            if version_count > 1
+            else ""
+        )
 
         cards.append(
             f"""
@@ -1436,6 +1687,7 @@ def db_view() -> str:
                   <span class="pill">{_esc(row['source_month'])}</span>
                   <span class="pill accent">{event_count} events</span>
                   <span class="pill {status_class}">{status_label}</span>
+                  {version_pill}
                   <span>{_esc(_format_datetime(row['created_at']))}</span>
                 </div>
               </div>
@@ -1457,8 +1709,14 @@ def db_view() -> str:
         </header>
         <div class="card">
           <div class="section-title">
-            <h2>Latest posters</h2>
+            <h2>Posters</h2>
             <span class="pill">library</span>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">View</span>
+            <a class="pill {'' if show_all else 'selected'}" href="/db">Unique</a>
+            <a class="pill { 'selected' if show_all else ''}" href="/db?show=all">All imports</a>
+            {f'<span class="pill soft">hidden {hidden_count}</span>' if hidden_count and not show_all else ''}
           </div>
           <div class="list">
             {''.join(cards)}
@@ -1496,27 +1754,34 @@ def poster_view(poster_id: str) -> str:
     approved_count = sum(1 for row in events if row["review_status"] == "approved")
     rejected_count = sum(1 for row in events if row["review_status"] == "rejected")
     status_label, status_class = _poster_status(len(events), pending_count, rejected_count)
-    warning = _poster_image_warning(poster["image_url"], poster["source_url"], poster["raw_json"])
     poster_conf_pill = _confidence_pill(poster["poster_confidence"])
+    source_url_value = poster["source_url"]
+    source_link = ""
+    if source_url_value:
+        source_link = (
+            f'<a class="button ghost small" href="{_esc(source_url_value)}" '
+            'target="_blank" rel="noopener">Source link</a>'
+        )
     event_cards = []
     for row in events:
         title = row["event_name"] or row["venue"] or "Untitled event"
         location = _format_location(row["venue"], row["city"], row["province"])
-        missing = []
-        if not row["venue"]:
-            missing.append("venue")
-        if not row["city"]:
-            missing.append("city")
-        if not row["province"]:
-            missing.append("province")
-        missing_text = f"Missing: {', '.join(missing)}" if missing else ""
+        missing_fields = _missing_fields(row)
+        missing_class = " has-missing" if missing_fields else ""
+        missing_chips = ""
+        if missing_fields:
+            chips = "".join(
+                f'<span class="chip warn">{_esc(field.title())}</span>'
+                for field in missing_fields
+            )
+            missing_chips = f'<div class="missing-chips">{chips}</div>'
         status = row["review_status"] or "pending"
         event_status_class = status if status in {"approved", "rejected"} else "pending"
         conf_badge = _confidence_badge(row["confidence"])
 
         event_cards.append(
             f"""
-            <div class="event-card">
+            <div class="event-card{missing_class}">
               <div class="event-date">{_esc(_format_event_date(row['date']))}</div>
               <div>
                 <div class="event-title">{_esc(title)}
@@ -1524,7 +1789,7 @@ def poster_view(poster_id: str) -> str:
                   {conf_badge}
                 </div>
                 <div class="event-meta">{_esc(location or 'Location not set')}</div>
-                {f'<div class="event-meta missing">{missing_text}</div>' if missing_text else ''}
+                {missing_chips}
                 <div class="event-actions">
                   <a class="button ghost small" href="/event/{row['id']}?return=/review/{poster_id}">Review</a>
                 </div>
@@ -1559,13 +1824,13 @@ def poster_view(poster_id: str) -> str:
           <div class="card">
             <h1>{_esc(poster['artist_name'])}</h1>
             <p>{_esc(poster['tour_name'] or 'Untitled tour')}</p>
-            {f'<p class="hint warn">{_esc(warning)}</p>' if warning else ''}
             <div class="meta-row" style="margin-bottom: 12px;">
               <span class="pill">{_esc(poster['source_month'])}</span>
               <span class="pill accent">{len(events)} events</span>
               <span class="pill {status_class}">{status_label}</span>
               {poster_conf_pill}
             </div>
+            {source_link}
             <p style="font-size: 13px; color: var(--muted);">Poster image</p>
             {image_html}
           </div>
@@ -1668,6 +1933,22 @@ def update_event(event_id: str):
     return_url = request.args.get("return") or f"/review/{poster_id}"
     title = event["event_name"] or event["venue"] or "Untitled event"
     conf_pill = _confidence_pill(event["confidence"])
+    missing_fields = _missing_fields(event)
+    missing_summary = ""
+    if missing_fields:
+        chips = "".join(
+            f'<span class="chip warn">{_esc(field.title())}</span>'
+            for field in missing_fields
+        )
+        missing_summary = f'<div class="missing-summary"><span class="filter-label">Missing</span>{chips}</div>'
+
+    def _required_class(value: str | None) -> str:
+        return " required" if not value else ""
+
+    def _required_hint(value: str | None) -> str:
+        if value:
+            return ""
+        return '<div class="field-hint warn">Required for approval.</div>'
 
     return _render_page(
         f"""
@@ -1688,28 +1969,33 @@ def update_event(event_id: str):
           <h1>{_esc(title)}</h1>
           <p>Update fields, then approve or reject.</p>
           {conf_pill}
+          {missing_summary}
           <form method="post">
             <input type="hidden" name="poster_id" value="{_esc(poster_id)}">
             <input type="hidden" name="return" value="{_esc(return_url)}">
-            <div class="field">
-              <label>Date</label>
+            <div class="field{_required_class(event['date'])}">
+              <label>Date<span class="req">*</span></label>
               <input name="date" value="{_esc(event['date'])}">
+              {_required_hint(event['date'])}
             </div>
             <div class="field">
               <label>Event name</label>
               <input name="event_name" value="{_esc(event['event_name'])}">
             </div>
-            <div class="field">
-              <label>Venue</label>
+            <div class="field{_required_class(event['venue'])}">
+              <label>Venue<span class="req">*</span></label>
               <input name="venue" value="{_esc(event['venue'])}">
+              {_required_hint(event['venue'])}
             </div>
-            <div class="field">
-              <label>City</label>
+            <div class="field{_required_class(event['city'])}">
+              <label>City<span class="req">*</span></label>
               <input name="city" value="{_esc(event['city'])}">
+              {_required_hint(event['city'])}
             </div>
-            <div class="field">
-              <label>Province</label>
+            <div class="field{_required_class(event['province'])}">
+              <label>Province<span class="req">*</span></label>
               <input name="province" value="{_esc(event['province'])}">
+              {_required_hint(event['province'])}
             </div>
             <div class="field">
               <label>Time</label>
@@ -1751,6 +2037,9 @@ def ingest() -> str:
     file = request.files.get("image")
     image_url_input = (request.form.get("image_url") or "").strip()
     store_local = False
+    force_reextract = (request.form.get("force_reextract") or "").strip() == "1"
+    source_post_id = None
+    image_hash = None
 
     if file and file.filename:
         image_path = _save_uploaded_file(file)
@@ -1764,6 +2053,7 @@ def ingest() -> str:
             source_type = _infer_source_type(image_url_input)
             store_local = _should_store_local_image(image_url_input, resolved_url)
             image_url_for_db = str(image_path) if store_local else resolved_url
+            source_post_id = _extract_instagram_shortcode(image_url_input)
         except Exception as exc:
             return _render_page(
                 f"""
@@ -1803,8 +2093,60 @@ def ingest() -> str:
             """
         )
 
+    image_hash = _hash_file(image_path)
+    existing = _find_existing_poster(source_post_id, source_url, image_hash)
+    if existing and not force_reextract:
+        if store_local:
+            _prune_remote_downloads()
+        if source_url and not KEEP_REMOTE_DOWNLOADS and not store_local:
+            try:
+                if image_path.exists() and image_path.parent == UPLOAD_DIR:
+                    image_path.unlink()
+            except OSError:
+                pass
+        source_label = _esc(existing["source_month"] or "unknown")
+        tour_label = _esc(existing["tour_name"] or "Untitled tour")
+        created_label = _esc(_format_datetime(existing["created_at"]))
+        reextract_action = ""
+        if source_url:
+            reextract_action = f"""
+              <form action="/ingest" method="post" style="display:inline;">
+                <input type="hidden" name="image_url" value="{_esc(source_url)}">
+                <input type="hidden" name="force_reextract" value="1">
+                <button class="button ghost" type="submit">Re-run extraction</button>
+              </form>
+            """
+        return _render_page(
+            f"""
+            <header class="topbar">
+              <div class="brand">
+                <div class="logo">AC</div>
+                <div>
+                  <div class="brand-title">Artist Calendar</div>
+                  <div class="brand-sub">Already imported</div>
+                </div>
+              </div>
+              <a class="button ghost" href="/">New upload</a>
+            </header>
+            <div class="card">
+              <h2>This poster is already in your library</h2>
+              <p><strong>{_esc(existing["artist_name"])}</strong> · {tour_label} · {source_label}</p>
+              <p style="color: var(--muted); font-size: 13px;">Imported {created_label}. Open the existing review to keep approvals consistent.</p>
+              <div class="actions">
+                <a class="button" href="/review/{existing['id']}">Review existing</a>
+                <a class="button ghost" href="/poster/{existing['id']}">View details</a>
+                {reextract_action}
+              </div>
+            </div>
+            """
+        )
+
     try:
         data = image_to_structured(str(image_path))
+        if source_post_id and not data.get("source_post_id"):
+            data["source_post_id"] = source_post_id
+        if image_hash and not data.get("image_hash"):
+            data["image_hash"] = image_hash
         if source_url:
             data["source_image_url"] = resolved_url
             data["source_image_path"] = str(image_path)

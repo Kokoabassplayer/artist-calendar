@@ -38,6 +38,8 @@ def _ensure_column(
 
 def _ensure_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "posters", "poster_confidence", "REAL")
+    _ensure_column(conn, "posters", "source_post_id", "TEXT")
+    _ensure_column(conn, "posters", "image_hash", "TEXT")
     _ensure_column(conn, "events", "confidence", "REAL")
 
 
@@ -90,6 +92,8 @@ def _insert_poster(
     source_month: str,
     source_type: str,
     source_url: Optional[str],
+    source_post_id: Optional[str],
+    image_hash: Optional[str],
     poster_confidence: Optional[float],
     raw_json: Dict[str, Any],
 ) -> str:
@@ -116,9 +120,10 @@ def _insert_poster(
         """
         INSERT INTO posters (
             id, artist_id, image_url, tour_name, source_month, source_type, source_url,
-            poster_confidence, version, is_latest, raw_json, extraction_status, extracted_at, created_at
+            source_post_id, image_hash, poster_confidence, version, is_latest, raw_json,
+            extraction_status, extracted_at, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             poster_id,
@@ -128,6 +133,8 @@ def _insert_poster(
             source_month,
             source_type,
             source_url,
+            source_post_id,
+            image_hash,
             poster_confidence,
             next_version,
             1,
@@ -199,6 +206,8 @@ def ingest_structured(
     contact_info = data.get("contact_info")
     tour_name = data.get("tour_name")
     poster_confidence = data.get("poster_confidence")
+    source_post_id = data.get("source_post_id")
+    image_hash = data.get("image_hash")
 
     image_url_value = image_url or _build_image_url(data, fallback="unknown")
 
@@ -215,6 +224,8 @@ def ingest_structured(
             source_month=source_month,
             source_type=source_type,
             source_url=source_url,
+            source_post_id=source_post_id,
+            image_hash=image_hash,
             poster_confidence=poster_confidence,
             raw_json=data,
         )
