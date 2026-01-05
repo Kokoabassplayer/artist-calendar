@@ -1,7 +1,7 @@
 # Consumer App Spec (Zero-Cost MVP)
 
 ## Goal
-Ship a consumer-facing web app with a liquid-glass interface that turns tour posters into clean event listings, map links, and calendar-ready plans. The MVP must run at $0 on free tiers.
+Ship an AI-first consumer web app with a liquid-glass interface that turns tour posters into clean event listings, map links, and calendar-ready plans. The MVP must run at $0 on free tiers.
 
 ## Problem Statement
 Fans waste time hunting posters, manually reading dates, typing events into calendars, and searching map locations for shows. The app removes that friction so people can discover shows and plan nights out in minutes.
@@ -17,6 +17,7 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
 - Fast intake: paste a URL, get events, review inline.
 - Consumption-first: users should see dates, locations, and "add to calendar" immediately.
 - Review feels like a focused editor: one primary action, clear next step.
+- AI-first: extraction, normalization, and suggestions are the default experience.
 
 ## User-Facing Flows
 1. Discover upcoming shows (by location, date, or artist).
@@ -24,6 +25,12 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
 3. Open an event for map + calendar actions.
 4. Add to calendar with one tap (ICS export link).
 5. Share with friends (link with poster + event summary).
+
+## AI-First Principles
+- AI performs the heavy lifting; humans confirm, not retype.
+- Provide confidence and provenance so users can trust outputs.
+- Offer a fast correction loop (edit inline, re-run on demand).
+- Degrade gracefully when AI quotas are hit (manual entry with smart defaults).
 
 ## Key Screens
 - Home feed (upcoming shows + followed artists)

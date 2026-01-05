@@ -1,7 +1,7 @@
 # Business Model Canvas (Draft)
 
 ## Value Propositions
-- Poster-to-calendar pipeline that removes manual effort.
+- AI poster-to-calendar pipeline that removes manual effort.
 - Fast discovery of shows by artist, date, and location.
 - Simple sharing for planning nights out with friends.
 
