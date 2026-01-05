@@ -41,6 +41,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "posters", "source_post_id", "TEXT")
     _ensure_column(conn, "posters", "image_hash", "TEXT")
     _ensure_column(conn, "events", "confidence", "REAL")
+    _ensure_column(conn, "events", "location_type", "TEXT DEFAULT 'public'")
 
 
 def _build_image_url(data: Dict[str, Any], fallback: str) -> str:
@@ -157,14 +158,15 @@ def _insert_events(
         if not event.get("date"):
             continue
         event_id = str(uuid.uuid4())
+        location_type = event.get("location_type") or "public"
         conn.execute(
             """
             INSERT INTO events (
                 id, poster_id, date, date_text, event_name, venue, city, province,
-                country, time, time_text, ticket_info, status, review_status, confidence,
-                created_at, updated_at
+                country, location_type, time, time_text, ticket_info, status,
+                review_status, confidence, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_id,
@@ -176,6 +178,7 @@ def _insert_events(
                 event.get("city"),
                 event.get("province"),
                 event.get("country") or "Thailand",
+                location_type,
                 event.get("time"),
                 event.get("time_text"),
                 event.get("ticket_info"),

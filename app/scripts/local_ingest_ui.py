@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from image_to_structured import image_to_structured
-from local_db import ingest_structured
+from local_db import ingest_structured, init_db
 
 
 app = Flask(__name__)
@@ -29,6 +29,18 @@ UPLOAD_DIR = PROJECT_ROOT / "output" / "uploads"
 DB_PATH = Path(os.getenv("LOCAL_DB_PATH", PROJECT_ROOT / "output" / "local.db"))
 KEEP_REMOTE_DOWNLOADS = os.getenv("KEEP_REMOTE_DOWNLOADS", "0") == "1"
 REMOTE_CACHE_MAX_FILES = int(os.getenv("REMOTE_CACHE_MAX_FILES", "200"))
+
+
+def _ensure_db() -> None:
+    conn = None
+    try:
+        conn = init_db(DB_PATH)
+    finally:
+        if conn:
+            conn.close()
+
+
+_ensure_db()
 
 
 def _render_page(body: str, title: str = "Artist Calendar") -> str:
@@ -757,6 +769,36 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
           }});
         }});
 
+        const applyLocationRequirement = (form, locationType) => {{
+          const requiredFields = form.querySelectorAll('[data-required-field]');
+          if (!requiredFields.length) return;
+          const normalized = (locationType || 'public').toLowerCase();
+          const requiresLocation = normalized !== 'internal' && normalized !== 'private';
+          requiredFields.forEach((wrapper) => {{
+            const key = wrapper.getAttribute('data-required-field');
+            if (!key) return;
+            const scope = wrapper.getAttribute('data-required-scope') || 'always';
+            const required = scope === 'always' ? true : requiresLocation;
+            const input = wrapper.querySelector(`[name=\"${{key}}\"]`);
+            const value = input && 'value' in input ? input.value.trim() : '';
+            const isMissing = required && !value;
+            wrapper.classList.toggle('required', isMissing);
+            const hint = wrapper.querySelector('[data-required-hint]');
+            if (hint) {{
+              hint.style.display = isMissing ? 'block' : 'none';
+            }}
+          }});
+        }};
+
+        document.querySelectorAll('form').forEach((formEl) => {{
+          const locationSelect = formEl.querySelector('select[name=\"location_type\"]');
+          if (!locationSelect) return;
+          applyLocationRequirement(formEl, locationSelect.value);
+          locationSelect.addEventListener('change', () => {{
+            applyLocationRequirement(formEl, locationSelect.value);
+          }});
+        }});
+
         const params = new URLSearchParams(window.location.search);
         const focusId = params.get('focus');
         if (focusId) {{
@@ -834,6 +876,39 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
                 card.classList.add('active');
               }}
             }};
+            const setRequiredState = (wrapper, required) => {{
+              const key = wrapper.getAttribute('data-required-field');
+              if (!key) return;
+              const input = wrapper.querySelector(`[name=\"${{key}}\"]`);
+              const value = input && 'value' in input ? input.value.trim() : '';
+              const isMissing = required && !value;
+              wrapper.classList.toggle('required', isMissing);
+              const hint = wrapper.querySelector('[data-required-hint]');
+              if (hint) {{
+                hint.style.display = isMissing ? 'block' : 'none';
+              }}
+            }};
+            const applyLocationRequirement = (locationType) => {{
+              const normalized = (locationType || 'public').toLowerCase();
+              const requiresLocation = normalized !== 'internal' && normalized !== 'private';
+              requiredFields.forEach((wrapper) => {{
+                const scope = wrapper.getAttribute('data-required-scope') || 'always';
+                const required = scope === 'always' ? true : requiresLocation;
+                setRequiredState(wrapper, required);
+              }});
+              if (missingEl) {{
+                if (!requiresLocation) {{
+                  missingEl.innerHTML = '<div class=\"missing-summary\"><span class=\"pill soft\">Internal event</span></div>';
+                }} else {{
+                  const fields = ['venue', 'city', 'province'];
+                  const missingFields = fields.filter((field) => {{
+                    const input = form && form.querySelector(`[name=\"${{field}}\"]`);
+                    return !input || !input.value.trim();
+                  }});
+                  missingEl.innerHTML = renderMissing(missingFields);
+                }}
+              }}
+            }};
 
             const selectEvent = (eventId, options = {{}}) => {{
               const data = eventData[eventId];
@@ -856,27 +931,19 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
               if (returnInput && posterId) {{
                 returnInput.value = `/poster/${{posterId}}?event=${{eventId}}`;
               }}
-              const fields = ['date', 'event_name', 'venue', 'city', 'province', 'time', 'ticket_info', 'status'];
+              const fields = ['date', 'event_name', 'location_type', 'venue', 'city', 'province', 'time', 'ticket_info', 'status'];
               fields.forEach((field) => {{
                 const input = form.querySelector(`[name=\"${{field}}\"]`);
                 if (!input) return;
                 if (field === 'status') {{
                   input.value = data.status || 'active';
+                }} else if (field === 'location_type') {{
+                  input.value = data.location_type || 'public';
                 }} else {{
                   input.value = data[field] || '';
                 }}
               }});
-              requiredFields.forEach((wrapper) => {{
-                const key = wrapper.getAttribute('data-required-field');
-                if (!key) return;
-                const value = (data[key] || '').toString().trim();
-                const required = !value;
-                wrapper.classList.toggle('required', required);
-                const hint = wrapper.querySelector('[data-required-hint]');
-                if (hint) {{
-                  hint.style.display = required ? 'block' : 'none';
-                }}
-              }});
+              applyLocationRequirement(data.location_type);
               setActiveCard(eventId);
               if (scroll) {{
                 const card = document.getElementById(`event-${{eventId}}`);
@@ -913,6 +980,14 @@ def _render_page(body: str, title: str = "Artist Calendar") -> str:
                 }}
               }});
             }});
+
+            const locationSelect = detail.querySelector('select[name=\"location_type\"]');
+            if (locationSelect) {{
+              locationSelect.addEventListener('change', () => {{
+                applyLocationRequirement(locationSelect.value);
+              }});
+              applyLocationRequirement(locationSelect.value);
+            }}
 
             const initialParam = params.get('event');
             const initialId = initialParam || detail.getAttribute('data-selected-event') || Object.keys(eventData)[0];
@@ -1051,8 +1126,8 @@ def _fetch_events(poster_id: str):
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """
-        SELECT id, date, event_name, venue, city, province, time, ticket_info,
-               status, review_status, confidence
+        SELECT id, date, event_name, venue, city, province, location_type, time,
+               ticket_info, status, review_status, confidence
         FROM events
         WHERE poster_id = ?
         ORDER BY date
@@ -1070,8 +1145,8 @@ def _fetch_event(event_id: str):
     conn.row_factory = sqlite3.Row
     row = conn.execute(
         """
-        SELECT id, poster_id, date, event_name, venue, city, province, time,
-               ticket_info, status, review_status, confidence
+        SELECT id, poster_id, date, event_name, venue, city, province, location_type,
+               time, ticket_info, status, review_status, confidence
         FROM events
         WHERE id = ?
         """,
@@ -1090,6 +1165,7 @@ def _update_event(event_id: str, fields: dict, review_status: str | None) -> Non
         "venue",
         "city",
         "province",
+        "location_type",
         "time",
         "ticket_info",
         "status",
@@ -1806,6 +1882,9 @@ def _dedupe_posters(rows: list[dict]) -> tuple[list[dict], int]:
 
 
 def _missing_fields(row: object) -> list[str]:
+    location_type = _row_value(row, "location_type") or "public"
+    if str(location_type).lower() in {"internal", "private"}:
+        return []
     missing = []
     if not _row_value(row, "venue"):
         missing.append("venue")
@@ -1826,11 +1905,15 @@ def _review_url(poster_id: str, show_all: bool, missing: str | None) -> str:
     return f"/review/{poster_id}{query}"
 
 
-def _required_class(value: str | None) -> str:
+def _required_class(value: str | None, required: bool) -> str:
+    if not required:
+        return ""
     return " required" if not value else ""
 
 
-def _required_hint(value: str | None) -> str:
+def _required_hint(value: str | None, required: bool) -> str:
+    if not required:
+        return '<div class="field-hint warn" data-required-hint style="display:none;">Required for approval.</div>'
     style = "" if not value else ' style="display:none;"'
     return f'<div class="field-hint warn" data-required-hint{style}>Required for approval.</div>'
 
@@ -1848,6 +1931,12 @@ def _event_editor(
         or _row_value(event, "venue")
         or "Untitled event"
     )
+
+    def _val(key: str) -> str:
+        value = _row_value(event, key)
+        return "" if value is None else str(value)
+
+    location_type = (_val("location_type") or "public").lower()
     conf_value = _row_value(event, "confidence")
     conf_score = conf_value if isinstance(conf_value, (int, float)) else None
     conf_pill = _confidence_pill(conf_score)
@@ -1859,13 +1948,15 @@ def _event_editor(
             for field in missing_fields
         )
         missing_summary = f'<div class="missing-summary"><span class="filter-label">Missing</span>{chips}</div>'
-
-    def _val(key: str) -> str:
-        value = _row_value(event, key)
-        return "" if value is None else str(value)
+    location_note = ""
+    if location_type in {"internal", "private"}:
+        location_note = '<div class="missing-summary"><span class="pill soft">Internal event</span></div>'
+    if not missing_summary and location_note:
+        missing_summary = location_note
 
     form_id_attr = f' id="{form_id}"' if form_id else ""
     event_id = _row_value(event, "id") or ""
+    requires_location = location_type not in {"internal", "private"}
 
     return f"""
       <{heading_tag} id="event-title">{_esc(title)}</{heading_tag}>
@@ -1876,29 +1967,37 @@ def _event_editor(
       <form method="post"{form_id_attr} action="/event/{_esc(str(event_id))}">
         <input type="hidden" name="poster_id" value="{_esc(poster_id)}">
         <input type="hidden" name="return" value="{_esc(return_url)}">
-        <div class="field{_required_class(_val('date'))}" data-required-field="date">
+        <div class="field{_required_class(_val('date'), True)}" data-required-field="date" data-required-scope="always">
           <label>Date<span class="req">*</span></label>
           <input name="date" value="{_esc(_val('date'))}">
-          {_required_hint(_val('date'))}
+          {_required_hint(_val('date'), True)}
         </div>
         <div class="field">
           <label>Event name</label>
           <input name="event_name" value="{_esc(_val('event_name'))}">
         </div>
-        <div class="field{_required_class(_val('venue'))}" data-required-field="venue">
+        <div class="field">
+          <label>Location type</label>
+          <select name="location_type">
+            <option value="public" {"selected" if location_type == "public" else ""}>Public venue (required)</option>
+            <option value="internal" {"selected" if location_type in {"internal", "private"} else ""}>Internal / no public venue</option>
+          </select>
+          <div class="hint">Choose internal for private shows without venue, city, or province.</div>
+        </div>
+        <div class="field{_required_class(_val('venue'), requires_location)}" data-required-field="venue" data-required-scope="location">
           <label>Venue<span class="req">*</span></label>
           <input name="venue" value="{_esc(_val('venue'))}">
-          {_required_hint(_val('venue'))}
+          {_required_hint(_val('venue'), requires_location)}
         </div>
-        <div class="field{_required_class(_val('city'))}" data-required-field="city">
+        <div class="field{_required_class(_val('city'), requires_location)}" data-required-field="city" data-required-scope="location">
           <label>City<span class="req">*</span></label>
           <input name="city" value="{_esc(_val('city'))}">
-          {_required_hint(_val('city'))}
+          {_required_hint(_val('city'), requires_location)}
         </div>
-        <div class="field{_required_class(_val('province'))}" data-required-field="province">
+        <div class="field{_required_class(_val('province'), requires_location)}" data-required-field="province" data-required-scope="location">
           <label>Province<span class="req">*</span></label>
           <input name="province" value="{_esc(_val('province'))}">
-          {_required_hint(_val('province'))}
+          {_required_hint(_val('province'), requires_location)}
         </div>
         <div class="field">
           <label>Time</label>
@@ -2131,7 +2230,11 @@ def poster_view(poster_id: str) -> str:
         if first_event_id is None:
             first_event_id = row["id"]
         title = row["event_name"] or row["venue"] or "Untitled event"
-        location = _format_location(row["venue"], row["city"], row["province"])
+        location_type = (row["location_type"] or "public").lower()
+        if location_type in {"internal", "private"}:
+            location = "Internal event"
+        else:
+            location = _format_location(row["venue"], row["city"], row["province"])
         missing_fields = _missing_fields(row)
         missing_class = " has-missing" if missing_fields else ""
         missing_chips = ""
@@ -2153,6 +2256,7 @@ def poster_view(poster_id: str) -> str:
             "venue": row["venue"] or "",
             "city": row["city"] or "",
             "province": row["province"] or "",
+            "location_type": row["location_type"] or "public",
             "time": row["time"] or "",
             "ticket_info": row["ticket_info"] or "",
             "status": row["status"] or "active",

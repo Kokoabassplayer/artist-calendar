@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS events (
     city TEXT,
     province TEXT,
     country TEXT DEFAULT 'Thailand',
+    location_type TEXT DEFAULT 'public',
     time TEXT,
     time_text TEXT,
     timezone TEXT DEFAULT 'Asia/Bangkok',
