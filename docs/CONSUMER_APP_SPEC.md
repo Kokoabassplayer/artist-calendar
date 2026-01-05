@@ -35,6 +35,15 @@ Fans waste time hunting posters, manually reading dates, typing events into cale
 - Motion: 150-250ms ease, gentle spring on sheet reveal, never bounce.
 - Focus: one primary action per screen; secondary actions are soft buttons.
 - Imagery: poster always visible near the editor; tap-to-zoom standard.
+
+## UI Component Spec (Liquid Glass)
+- Glass Card: 16px radius, 1px highlight, blur background, soft shadow; use for content blocks.
+- Glass Sheet (mobile): bottom sheet with 20px top radius, backdrop dim 50%.
+- Primary Button: solid accent, 12px radius, full-width on mobile.
+- Secondary Button: translucent fill with 1px border, same height as primary.
+- Pill/Badge: 999px radius, small text, soft tint; avoid more than 3 per row.
+- Input Field: 12px radius, subtle border; required state uses warm tint only.
+- Poster Preview: tap-to-zoom, max-height 180px inside editor.
 ## User-Facing Flows
 1. Discover upcoming shows (by location, date, or artist).
 2. Follow favorite artists and get a personalized feed.
